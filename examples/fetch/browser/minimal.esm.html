@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head>
+  <title>axios - fetch example</title>
+  <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"/>
+</head>
+<body class="container">
+<h2>Check the console!</h2>
+</body>
+<script type="module">
+  import axios from "https://axios.elide.dev/axios/1.2.1-fetch-beta5/generic/axios.min.mjs";
+  const response = await axios.get("https://httpbin.org/json", {adapter: 'fetch'});
+  console.log("data from response: ", JSON.stringify(response.data));
+</script>
+</html>

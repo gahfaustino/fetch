@@ -1,4 +1,4 @@
-// Axios v1.5.1 Copyright (c) 2023 Matt Zabriskie and contributors
+// Axios v1.2.1-fetch-beta5 Copyright (c) 2023 Matt Zabriskie and contributors
 function bind(fn, thisArg) {
   return function wrap() {
     return fn.apply(thisArg, arguments);
@@ -191,16 +191,12 @@ const isStream = (val) => isObject(val) && isFunction(val.pipe);
  * @returns {boolean} True if value is an FormData, otherwise false
  */
 const isFormData = (thing) => {
-  let kind;
+  const pattern = '[object FormData]';
   return thing && (
-    (typeof FormData === 'function' && thing instanceof FormData) || (
-      isFunction(thing.append) && (
-        (kind = kindOf(thing)) === 'formdata' ||
-        // detect form-data instance
-        (kind === 'object' && isFunction(thing.toString) && thing.toString() === '[object FormData]')
-      )
-    )
-  )
+    (typeof FormData === 'function' && thing instanceof FormData) ||
+    toString.call(thing) === pattern ||
+    (isFunction(thing.toString) && thing.toString() === pattern)
+  );
 };
 
 /**
@@ -284,11 +280,7 @@ function findKey(obj, key) {
   return null;
 }
 
-const _global = (() => {
-  /*eslint no-undef:0*/
-  if (typeof globalThis !== "undefined") return globalThis;
-  return typeof self !== "undefined" ? self : (typeof window !== 'undefined' ? window : global)
-})();
+const _global = typeof self === "undefined" ? typeof global === "undefined" ? undefined : global : self;
 
 const isContextDefined = (context) => !isUndefined(context) && context !== _global;
 
@@ -519,7 +511,7 @@ const matchAll = (regExp, str) => {
 const isHTMLForm = kindOfTest('HTMLFormElement');
 
 const toCamelCase = str => {
-  return str.toLowerCase().replace(/[-_\s]([a-z\d])(\w*)/g,
+  return str.toLowerCase().replace(/[_-\s]([a-z\d])(\w*)/g,
     function replacer(m, p1, p2) {
       return p1.toUpperCase() + p2;
     }
@@ -527,7 +519,9 @@ const toCamelCase = str => {
 };
 
 /* Creating a function that will check if an object has a property. */
-const hasOwnProperty = (({hasOwnProperty}) => (obj, prop) => hasOwnProperty.call(obj, prop))(Object.prototype);
+const _hasOwnProperty = (({hasOwnProperty}) => (obj, prop) => hasOwnProperty.call(obj, prop))(Object.prototype);
+
+const hasOwnProp = _hasOwnProperty;
 
 /**
  * Determine if a value is a RegExp object
@@ -543,9 +537,8 @@ const reduceDescriptors = (obj, reducer) => {
   const reducedDescriptors = {};
 
   forEach(descriptors, (descriptor, name) => {
-    let ret;
-    if ((ret = reducer(descriptor, name, obj)) !== false) {
-      reducedDescriptors[name] = ret || descriptor;
+    if (reducer(descriptor, name, obj) !== false) {
+      reducedDescriptors[name] = descriptor;
     }
   });
 
@@ -604,37 +597,6 @@ const toFiniteNumber = (value, defaultValue) => {
   return Number.isFinite(value) ? value : defaultValue;
 };
 
-const ALPHA = 'abcdefghijklmnopqrstuvwxyz';
-
-const DIGIT = '0123456789';
-
-const ALPHABET = {
-  DIGIT,
-  ALPHA,
-  ALPHA_DIGIT: ALPHA + ALPHA.toUpperCase() + DIGIT
-};
-
-const generateString = (size = 16, alphabet = ALPHABET.ALPHA_DIGIT) => {
-  let str = '';
-  const {length} = alphabet;
-  while (size--) {
-    str += alphabet[Math.random() * length|0];
-  }
-
-  return str;
-};
-
-/**
- * If the thing is a FormData object, return true, otherwise return false.
- *
- * @param {unknown} thing - The thing to check.
- *
- * @returns {boolean}
- */
-function isSpecCompliantForm(thing) {
-  return !!(thing && isFunction(thing.append) && thing[Symbol.toStringTag] === 'FormData' && thing[Symbol.iterator]);
-}
-
 const toJSONObject = (obj) => {
   const stack = new Array(10);
 
@@ -665,11 +627,6 @@ const toJSONObject = (obj) => {
 
   return visit(obj, 0);
 };
-
-const isAsyncFn = kindOfTest('AsyncFunction');
-
-const isThenable = (thing) =>
-  thing && (isObject(thing) || isFunction(thing)) && isFunction(thing.then) && isFunction(thing.catch);
 
 const utils = {
   isArray,
@@ -706,8 +663,8 @@ const utils = {
   forEachEntry,
   matchAll,
   isHTMLForm,
-  hasOwnProperty,
-  hasOwnProp: hasOwnProperty, // an alias to avoid ESLint no-prototype-builtins detection
+  hasOwnProperty: _hasOwnProperty,
+  hasOwnProp: _hasOwnProperty, // an alias to avoid ESLint no-prototype-builtins detection
   reduceDescriptors,
   freezeMethods,
   toObjectSet,
@@ -717,12 +674,7 @@ const utils = {
   findKey,
   global: _global,
   isContextDefined,
-  ALPHABET,
-  generateString,
-  isSpecCompliantForm,
-  toJSONObject,
-  isAsyncFn,
-  isThenable
+  toJSONObject
 };
 
 /**
@@ -820,8 +772,7 @@ AxiosError$1.from = (error, code, config, request, response, customProps) => {
   return axiosError;
 };
 
-// eslint-disable-next-line strict
-const httpAdapter = null;
+const FormData$1 = FormData;
 
 /**
  * Determines if the given thing is a array or js object.
@@ -879,6 +830,17 @@ const predicates = utils.toFlatObject(utils, {}, null, function filter(prop) {
 });
 
 /**
+ * If the thing is a FormData object, return true, otherwise return false.
+ *
+ * @param {unknown} thing - The thing to check.
+ *
+ * @returns {boolean}
+ */
+function isSpecCompliant(thing) {
+  return thing && utils.isFunction(thing.append) && thing[Symbol.toStringTag] === 'FormData' && thing[Symbol.iterator];
+}
+
+/**
  * Convert a data object to FormData
  *
  * @param {Object} obj
@@ -907,7 +869,7 @@ function toFormData$1(obj, formData, options) {
   }
 
   // eslint-disable-next-line no-param-reassign
-  formData = formData || new (FormData)();
+  formData = formData || new (FormData$1 || FormData)();
 
   // eslint-disable-next-line no-param-reassign
   options = utils.toFlatObject(options, {
@@ -925,7 +887,7 @@ function toFormData$1(obj, formData, options) {
   const dots = options.dots;
   const indexes = options.indexes;
   const _Blob = options.Blob || typeof Blob !== 'undefined' && Blob;
-  const useBlob = _Blob && utils.isSpecCompliantForm(formData);
+  const useBlob = _Blob && isSpecCompliant(formData);
 
   if (!utils.isFunction(visitor)) {
     throw new TypeError('visitor must be a function');
@@ -970,7 +932,7 @@ function toFormData$1(obj, formData, options) {
         value = JSON.stringify(value);
       } else if (
         (utils.isArray(value) && isFlatArray(value)) ||
-        ((utils.isFileList(value) || utils.endsWith(key, '[]')) && (arr = utils.toArray(value))
+        (utils.isFileList(value) || utils.endsWith(key, '[]') && (arr = utils.toArray(value))
         )) {
         // eslint-disable-next-line no-param-reassign
         key = removeBrackets(key);
@@ -1222,9 +1184,12 @@ const transitionalDefaults = {
 
 const URLSearchParams$1 = typeof URLSearchParams !== 'undefined' ? URLSearchParams : AxiosURLSearchParams;
 
-const FormData$1 = typeof FormData !== 'undefined' ? FormData : null;
+// In browser environments, we directly use the native Fetch API implementation, attached at `window`.
 
-const Blob$1 = typeof Blob !== 'undefined' ? Blob : null;
+const FetchHeaders = window.Headers;
+const FetchRequest = window.Request;
+const FetchResponse = window.Response;
+const fetcher = window.fetch;
 
 /**
  * Determine if we're running in a standard browser environment
@@ -1277,10 +1242,19 @@ const isStandardBrowserEnv = (() => {
 
 const platform = {
   isBrowser: true,
+  isGenericJs: true,  // browser is a superset of generic JS
+  knownAdapters: ['xhr', 'fetch'],
+  defaultFetchOptions: {
+    cache: 'default',
+    redirect: 'follow'
+  },
   classes: {
     URLSearchParams: URLSearchParams$1,
     FormData: FormData$1,
-    Blob: Blob$1
+    Blob,
+    Request: FetchRequest,
+    Response: FetchResponse,
+    Headers: FetchHeaders
   },
   isStandardBrowserEnv,
   isStandardBrowserWebWorkerEnv,
@@ -1387,6 +1361,10 @@ function formDataToJSON(formData) {
   return null;
 }
 
+const DEFAULT_CONTENT_TYPE = {
+  'Content-Type': undefined
+};
+
 /**
  * It takes a string, tries to parse it, and if it fails, it returns the stringified version
  * of the input
@@ -1416,7 +1394,7 @@ const defaults = {
 
   transitional: transitionalDefaults,
 
-  adapter: ['xhr', 'http'],
+  adapter: platform.knownAdapters || ['xhr', 'http', 'fetch'],
 
   transformRequest: [function transformRequest(data, headers) {
     const contentType = headers.getContentType() || '';
@@ -1525,14 +1503,25 @@ const defaults = {
 
   headers: {
     common: {
-      'Accept': 'application/json, text/plain, */*',
-      'Content-Type': undefined
+      'Accept': 'application/json, text/plain, */*'
     }
-  }
+  },
+
+  fetcher: null,
+
+  fetchOptions: platform.defaultFetchOptions || {
+    redirect: 'follow'
+  },
+
+  parsedUrl: null,
 };
 
-utils.forEach(['delete', 'get', 'head', 'post', 'put', 'patch'], (method) => {
+utils.forEach(['delete', 'get', 'head'], function forEachMethodNoData(method) {
   defaults.headers[method] = {};
+});
+
+utils.forEach(['post', 'put', 'patch'], function forEachMethodWithData(method) {
+  defaults.headers[method] = utils.merge(DEFAULT_CONTENT_TYPE);
 });
 
 const defaults$1 = defaults;
@@ -1615,15 +1604,13 @@ function parseTokens(str) {
   return tokens;
 }
 
-const isValidHeaderName = (str) => /^[-_a-zA-Z0-9^`|~,!#$%&'*+.]+$/.test(str.trim());
+function isValidHeaderName(str) {
+  return /^[-_a-zA-Z]+$/.test(str.trim());
+}
 
-function matchHeaderValue(context, value, header, filter, isHeaderNameFilter) {
+function matchHeaderValue(context, value, header, filter) {
   if (utils.isFunction(filter)) {
     return filter.call(this, value, header);
-  }
-
-  if (isHeaderNameFilter) {
-    value = header;
   }
 
   if (!utils.isString(value)) return;
@@ -1657,7 +1644,7 @@ function buildAccessors(obj, header) {
   });
 }
 
-class AxiosHeaders$1 {
+let AxiosHeaders$1 = class AxiosHeaders {
   constructor(headers) {
     headers && this.set(headers);
   }
@@ -1729,7 +1716,7 @@ class AxiosHeaders$1 {
     if (header) {
       const key = utils.findKey(this, header);
 
-      return !!(key && this[key] !== undefined && (!matcher || matchHeaderValue(this, this[key], key, matcher)));
+      return !!(key && (!matcher || matchHeaderValue(this, this[key], key, matcher)));
     }
 
     return false;
@@ -1762,20 +1749,8 @@ class AxiosHeaders$1 {
     return deleted;
   }
 
-  clear(matcher) {
-    const keys = Object.keys(this);
-    let i = keys.length;
-    let deleted = false;
-
-    while (i--) {
-      const key = keys[i];
-      if(!matcher || matchHeaderValue(this, this[key], key, matcher, true)) {
-        delete this[key];
-        deleted = true;
-      }
-    }
-
-    return deleted;
+  clear() {
+    return Object.keys(this).forEach(this.delete.bind(this));
   }
 
   normalize(format) {
@@ -1864,21 +1839,11 @@ class AxiosHeaders$1 {
 
     return this;
   }
-}
+};
 
-AxiosHeaders$1.accessor(['Content-Type', 'Content-Length', 'Accept', 'Accept-Encoding', 'User-Agent', 'Authorization']);
+AxiosHeaders$1.accessor(['Content-Type', 'Content-Length', 'Accept', 'Accept-Encoding', 'User-Agent']);
 
-// reserved names hotfix
-utils.reduceDescriptors(AxiosHeaders$1.prototype, ({value}, key) => {
-  let mapped = key[0].toUpperCase() + key.slice(1); // map `set` => `Set`
-  return {
-    get: () => value,
-    set(headerValue) {
-      this[mapped] = headerValue;
-    }
-  }
-});
-
+utils.freezeMethods(AxiosHeaders$1.prototype);
 utils.freezeMethods(AxiosHeaders$1);
 
 const AxiosHeaders$2 = AxiosHeaders$1;
@@ -1928,6 +1893,9 @@ function CanceledError$1(message, config, request) {
 utils.inherits(CanceledError$1, AxiosError$1, {
   __CANCEL__: true
 });
+
+// eslint-disable-next-line strict
+const httpAdapter = null;
 
 /**
  * Resolve or reject a Promise based on response status.
@@ -2016,6 +1984,33 @@ function isAbsoluteURL(url) {
 }
 
 /**
+ * Trim `n` slashes from the start or `end` of a `subject` string.
+ *
+ * @param {!string} subject String to trim slashes from.
+ * @param {boolean=} opt_end Whether to trim from the end of the string. If not passed or passed as `false`, the start
+ *   of the string is inspected instead.
+ * @return {!string} String with slashes trimmed from either the start or end of the string.
+ */
+function trimSlashes(subject, opt_end) {
+  const originalLength = subject.length;
+  const getSubjectChar = () => subject.charAt(opt_end === true ? subject.length - 1 : 0);
+  const trimOne = () => subject = opt_end === true ? subject.slice(0, subject.length - 1) : subject.slice(1);
+
+  let char = getSubjectChar();
+  let iterations = 0;
+
+  while (char === '/') {
+    iterations++;
+    trimOne();
+    char = getSubjectChar();
+    if (iterations > originalLength) {
+      break;  // shouldn't infinite loop, but this protection guarantees it won't look past the length of the string
+    }
+  }
+  return subject;
+}
+
+/**
  * Creates a new URL by combining the specified URLs
  *
  * @param {string} baseURL The base URL
@@ -2024,9 +2019,83 @@ function isAbsoluteURL(url) {
  * @returns {string} The combined URL
  */
 function combineURLs(baseURL, relativeURL) {
-  return relativeURL
-    ? baseURL.replace(/\/+$/, '') + '/' + relativeURL.replace(/^\/+/, '')
+  const combined = relativeURL
+    ? (
+        (baseURL.charAt(baseURL.length - 1) === '/' ? trimSlashes(baseURL, true) : baseURL)
+        + '/'
+        + (relativeURL.charAt(0) === '/' ? trimSlashes(relativeURL) : relativeURL)
+      )
     : baseURL;
+
+  // corner case: if one of the original URLs has multiple slashes which do not reside at the end (for the `baseURL`) or
+  // at the start (for the `relativeURL`), we sanitize them here. avoidance of regex is deliberate, in order to avoid
+  // polynomial runtime complexity.
+  //
+  // since the `baseURL` and `relativeURL` are guaranteed not to have such artifacts at the end, or beginning,
+  // respectively (by `trimSlashes`), we only need to do a quick check for the presence of a double-slash. if there is
+  // none present, we can bail and return the combined URL.
+  //
+  // See more: CWE-1333, CWE-400, CWE-730 (https://cwe.mitre.org/index.html)
+  //
+  // since Axios only supports a limited set of protocols on each platform, we can safely predict where the protocol
+  // specifier will be. Then, we can scan the inverse range for any double-slashes. If there is no protocol present (as
+  // is the case for relative URLs), we can simply scan the string.
+  //
+  // the full suite of supported protocol prefixes across all platforms is:
+  // `['http', 'https', 'file', 'blob', 'url', 'data']`
+  //
+  // these are all either three, four, or five characters long (in the lone case of `https`). we use these offsets to
+  // probe for the protocol string, without iterating, and then proceed as above.
+  const protocolMinimumOffset = 3 + 1;  // 3 character minimum + 1 to arrive at `:`
+  const protocolMaximumOffset = 5 + 1;  // 5 character maximum + 1 to arrive at `:`
+  const combinedLength = combined.length;
+  const offset = Math.min(combinedLength, (protocolMaximumOffset + 2));
+  let sub = combined;
+
+  /* eslint-disable */
+  let protocolPosition = -1;
+
+  // if the combined URLs are shorter than the minimum, there is no protocol by definition, and the URLs are both
+  // relative (and both very small). because we want the offset of the protocol separator, we return `-1` to
+  // indicate it was not found, or `1` to continue processing (we don't know where it is yet).
+  if (!(combinedLength < protocolMinimumOffset)) {
+    // now that we know it's at least as long as the minimum, we can safely slice and check for the protocol tail. the
+    // length of the string can still be less than the maximum offset + 2, though, so we take the minimum of that and
+    // the length of the combined string to prevent overflows. at the same time, we assign the smaller search string to
+    // the subject, so that we don't have to slice it again, and OR-it to the next step.
+    protocolPosition = ((sub = sub.slice(0, offset)) || sub).includes('://') ?
+        // we've found the protocol separator; return the start position. since we may have sliced the search space,
+        // there may or may not be an offset to apply. otherwise, we just return -1 to indicate it was not found (i.e.
+        // in the case of a relative base URL. since the `indexOf` returns the start of the string, we add `3` to
+        // include the protocol separator itself.
+        (sub.indexOf('://') + offset + 3) : -1;
+  }
+
+
+  // use the above metric to calculate the minimum search space for double-slashes which need to be sanitized.
+  const doubleSlashSearch = protocolPosition === -1 ? combined : combined.slice(protocolPosition);
+
+  // check for double slashes in the target search space. if found, build the return value character by character,
+  // dropping repeated slashes as we go.
+  if (doubleSlashSearch.includes('//')) {
+    let previous = '';
+    let charIndex = 0;
+    let charsTotal = doubleSlashSearch.length;
+    let sanitized = '';
+
+    while (charIndex < charsTotal) {
+      const char = doubleSlashSearch.charAt(charIndex);
+      if (char === '/' && previous === '/') ; else {
+        sanitized += char;
+      }
+      previous = char;
+      charIndex++;
+    }
+
+    // finally, if we trimmed the protocol from the search space, we need to combine it again before we return.
+    return protocolPosition === -1 ? `${combined.slice(0, protocolPosition)}${sanitized}` : sanitized;
+  }
+  return combined;
 }
 
 /**
@@ -2213,17 +2282,8 @@ const xhrAdapter = isXHRAdapterSupported && function (config) {
       }
     }
 
-    let contentType;
-
-    if (utils.isFormData(requestData)) {
-      if (platform.isStandardBrowserEnv || platform.isStandardBrowserWebWorkerEnv) {
-        requestHeaders.setContentType(false); // Let the browser set it
-      } else if(!requestHeaders.getContentType(/^\s*multipart\/form-data/)){
-        requestHeaders.setContentType('multipart/form-data'); // mobile/desktop app frameworks
-      } else if(utils.isString(contentType = requestHeaders.getContentType())){
-        // fix semicolon duplication issue for ReactNative FormData implementation
-        requestHeaders.setContentType(contentType.replace(/^\s*(multipart\/form-data);+/, '$1'));
-      }
+    if (utils.isFormData(requestData) && (platform.isStandardBrowserEnv || platform.isStandardBrowserWebWorkerEnv)) {
+      requestHeaders.setContentType(false); // Let the browser set it
     }
 
     let request = new XMLHttpRequest();
@@ -2409,13 +2469,416 @@ const xhrAdapter = isXHRAdapterSupported && function (config) {
   });
 };
 
-const knownAdapters = {
-  http: httpAdapter,
-  xhr: xhrAdapter
+const AbortController$1 = AbortController;
+
+const defaultFetchResponseType = 'json';
+
+const plainMime = 'text/plain';
+const contentTypeHeader = 'Content-Type';
+const contentLengthHeader = 'Content-Length';
+const transferEncodingHeader = 'Transfer-Encoding';
+
+const textLikeContentTypes = new Set([
+    plainMime,
+    'text/html',
+    'text/xml',
+    'text/css',
+    'text/javascript',
+    'application/xml',
+    'application/xhtml+xml',
+    'application/javascript'
+]);
+
+const knownNoBodyResponseStatuses = new Set([
+    204,
+    205,
+    304
+]);
+
+const debugLog = (msg, ...args) => {
+  {
+    console.log('[axios:fetch] ', msg, ...args);
+  }
 };
 
-utils.forEach(knownAdapters, (fn, value) => {
-  if (fn) {
+const fetchAssert = (definition) => {
+    {
+      definition((condition, message) => {
+        console.assert(condition, message);
+      });
+    }
+};
+
+function patchDecodeJson(response) {
+  response.json = async () => {
+    return JSON.parse((await response.text()).trim());
+  };
+  return response;
+}
+
+const handlerFactory = (response) => {
+  return {
+    'text': response.text,
+    'form': response.formData,
+    'blob': response.blob,
+    'json': function jsonShim() {
+      return patchDecodeJson(response).json();
+    }
+  }
+};
+
+const selectHandlerFromConfig = (config, handlers) => {
+  const handler = handlers[config.responseType] || null;
+  debugLog('handler from: config', config.responseType, handler);
+  return handler;
+};
+
+const selectHandlerFromContentType = (config, handlers, contentType) => {
+  const resolvedContentType = (
+      // if it's a text-like content type, resolve it as text/plain
+      textLikeContentTypes.has(contentType) ? plainMime : contentType
+  );
+  const handler = {
+    'application/json': handlers['json'],
+    'text/plain': handlers['text'],
+  }[resolvedContentType] || null;
+
+  debugLog('handler from: content-type', config.responseType, handler);
+  return handler;
+};
+
+function isResponseEligibleForBody(response) {
+  // status cannot be present in `knownNoBodyResponseStatuses` in order to have a parse-able body. additionally, the
+  // response shouldn't be an opaque redirect; those should be handed directly back to the developer.
+  return !knownNoBodyResponseStatuses.has(
+      response.status
+  );
+}
+
+function processResponseBody(config, response, responseHeaders) {
+  let hasBody = false;
+  let handler = null;
+  const handlers = handlerFactory(response);
+
+  // case: non-chunked body with `content-length` header, and...
+  // case: chunked body with a `transfer-encoding` header
+  const hasContentType = responseHeaders.has(contentTypeHeader);
+  if ((responseHeaders.has(contentLengthHeader) || responseHeaders.has(transferEncodingHeader))) {
+    const hasKnownLength = responseHeaders.has(contentLengthHeader);
+    const contentType = responseHeaders.get(contentTypeHeader);
+
+    if (hasKnownLength) {
+      debugLog('body has known length', responseHeaders.get(contentLengthHeader));
+
+      // the response has a content-length, and therefore a known response size.
+      hasBody = +(responseHeaders.get(contentLengthHeader) || 0) > 0;
+    } else {
+      debugLog('body is chunked');
+
+      // the response has a transfer-encoding header indicating a chunked (streamed) response.
+      hasBody = true;
+    }
+
+    if (hasBody) {
+      // if we have detected a body, select a handler to consume the body based on config, or fall-back to the
+      // content-type to resolve a value. if all else fails, the data is considered raw data and made available via a
+      // raw `Blob`.
+      handler = config.responseType ? selectHandlerFromConfig(config, handlers) : null;
+      if (config.responseType) {
+        debugLog('resolved handler from config: ', handler);
+      }
+
+      if (hasContentType && handler == null) {
+        // trim any charset specified
+        const cleanedContentType = contentType.includes(';') ? contentType.split(';')[0] : contentType;
+        handler = selectHandlerFromContentType(config, handlers, cleanedContentType);
+        debugLog('resolved handler from content-type: ', handler);
+      }
+      if (handler == null) {
+        debugLog('no handler found: falling back to `blob`');
+
+        // if we get this far, it means there wasn't a handler specified via configuration, and we couldn't easily
+        // resolve a handler for a text-type via the content-type. we'll have to fall back to a `Blob`.
+        handler = handlers['blob'] || null;
+      }
+    }
+  }
+  return [hasBody, handler];
+}
+
+function dispatchFetch(config, resolve, reject) {
+  debugLog('invoked');
+
+  const abortController = new AbortController$1();
+  const { signal } = abortController;
+  const body = config.data;
+  const method = config.method.toUpperCase();
+  const responseType = config.responseType;
+  const requestHeaders = AxiosHeaders$2.from(config.headers).normalize();
+  let fullPath = buildFullPath(config.baseURL, config.url);
+
+  // safely parse into `URL`, or use existing/cached URL via config. skip this step for relative URLs, which do not
+  // parse into `URL` objects because they do not encapsulate origin info. make sure to let protocol-relative URLs
+  // through, though, which are considered absolute.
+  let parsedUrl = config.parsedUrl;
+  if (!parsedUrl && !(fullPath.startsWith('/') && !fullPath.startsWith('//'))) {
+    try {
+      // we are unable to parse the URL if it (1) is a relative URL, or (2) is a malformed URL to begin with. to avoid
+      // #1 causing an error, we can make an attempt here to use the current window origin as a relative base; this will
+      // only work in browsers, though, so we need to be careful to check that we have an origin in the first place.
+      if (platform.isStandardBrowserEnv) {
+        // origin = `https://domain.com` (protocol + host + port if non-standard)
+        // fullPath = `/foo/bar` (relative path)
+        // `fullPath = https://domain.com/foo/bar`
+        fullPath = window.location.origin + fullPath;
+      }
+      parsedUrl = new URL(fullPath);
+    } catch (urlParseErr) {
+      console.error('[axios:fetch] URL parse error: ', urlParseErr);
+      reject(urlParseErr);
+      return;
+    }
+  }
+
+  const fetchOptions = config.fetchOptions || {};
+
+  // bail early if protocol is unsupported
+  const protocol = parseProtocol(fullPath);
+  if (protocol && platform.protocols.indexOf(protocol) === -1) {
+    reject(new AxiosError$1('Unsupported protocol ' + protocol + ':', AxiosError$1.ERR_BAD_REQUEST, config));
+    return;
+  }
+
+  // if we're posting form data, let the browser control the content type
+  if (isFormData(body) && platform.isStandardBrowserEnv) {
+    requestHeaders.setContentType(false);
+  }
+
+  // HTTP basic authentication
+  if (config.auth) {
+    const username = config.auth.username || '';
+    const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : '';
+    requestHeaders.set('Authorization', 'Basic ' + btoa(username + ':' + password));
+  }
+
+  // honor XHR `withCredentials` as fetch `mode:cors`
+  if (!isUndefined(config.withCredentials)) {
+    fetchOptions.mode = 'cors';
+  }
+
+  let req;
+  let fetchHandle;
+  let onCanceled;
+  if (config.cancelToken || config.signal) {
+    // eslint-disable-next-line func-names
+    onCanceled = cancel => {
+      if (!fetchHandle) {
+        // already canceled
+        return;
+      }
+      reject(!cancel || cancel.type ? new CanceledError$1(null, config, req) : cancel);
+      abortController.abort();
+      fetchHandle = null;
+    };
+
+    config.cancelToken && config.cancelToken.subscribe(onCanceled);
+    if (config.signal) {
+      config.signal.aborted ? onCanceled() : config.signal.addEventListener('abort', onCanceled);
+    }
+  }
+
+  // prep request headers
+  const serializedHeaders = requestHeaders.toJSON(true);
+  const headers = new FetchHeaders();
+  Object.entries(serializedHeaders).forEach(([key, value]) => {
+    headers.set(key, value);  // already merged
+  });
+  debugLog('fetch headers', Object.fromEntries(headers.entries()));
+
+  // body-less requests should not have content-type or content-length headers
+  body === undefined && (
+      headers.delete(contentTypeHeader) ||
+      headers.delete(contentLengthHeader)
+  );
+
+  debugLog(`request: ${method} ${parsedUrl ? parsedUrl.toString() : fullPath} (has body: ${!!body})`);
+  debugLog(`finalized headers`, Object.fromEntries(headers.entries()));
+
+  // prep HTTP request
+  req = new FetchRequest(parsedUrl || fullPath, {
+    method,
+    headers,
+    body,
+  });
+
+  // mount responseType to request if it is not the default
+  if (responseType && responseType !== defaultFetchResponseType) {
+    req.responseType = config.responseType;
+  }
+
+  // @TODO(sgammon): upload/download progress events
+
+  function done() {
+    if (config.cancelToken && onCanceled) {
+      config.cancelToken.unsubscribe(onCanceled);
+    }
+    if (config.signal && onCanceled) {
+      config.signal.removeEventListener('abort', onCanceled);
+    }
+  }
+
+  const cleanup = () => {
+    debugLog('cleanup');
+    fetchHandle = null;
+  };
+
+  const continueChain = (response) => {
+    return settle(function _resolve(value) {
+      resolve(value);
+      done();
+    }, function _reject(err) {
+      reject(err);
+      done();
+    }, response);
+  };
+
+  // success handler: translates a `Response` to an axios response
+  const handleResponse = response => {
+    if (!fetchHandle) {
+      debugLog('fetch cancelled; dropping response');
+      return;  // canceled
+    }
+    debugLog('response status =', response.status, response.statusText);
+
+    // begin preparing the response
+    debugLog('raw headers', Object.fromEntries(response.headers.entries()));
+    const responseHeaders = AxiosHeaders$2.from(
+        Object.fromEntries(response.headers.entries())
+    );
+    debugLog('headers', responseHeaders);
+
+    let hasBody = false;
+    let handler = null;
+    let eligibleForBody = isResponseEligibleForBody(response);
+    debugLog('eligible for body =', eligibleForBody);
+
+    if (eligibleForBody) {
+      [hasBody, handler] = processResponseBody(
+          config,
+          response,
+          responseHeaders,
+      );
+    }
+    debugLog('response has body =', hasBody);
+
+    const synthesizedResponse = {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      request: req,
+      fetchResponse: response,
+      config,
+    };
+
+    if (!handler) {
+      if (hasBody) {
+        console.warn('axios-fetch: response has a body, but no handler could be resolved.');
+      }
+      debugLog('nohandler');
+      continueChain(synthesizedResponse);
+      cleanup();  // done
+    } else {
+      debugLog('handler', config.responseType || defaultFetchResponseType, handler);
+
+      try {
+        // dispatch data handler if found (`text`, `json`, or `blob`)
+        fetchAssert((t) => t(typeof handler === 'function', "handler should be a function if resolved"));
+
+        debugLog('decode');
+        return handler.apply(response).then(data => {
+          debugLog('data');
+
+          // continue processing with merged-in data
+          return continueChain(Object.assign(synthesizedResponse, { data }));
+        }, reject);
+      } catch (err) {
+        console.error('axios-fetch: error while decoding response data', err);
+        debugLog('error', err);
+        reject(err);
+      } finally {
+        cleanup();
+      }
+    }
+  };
+
+  const handleError = err => {
+    debugLog('error', err);
+    reject(err);
+  };
+
+  debugLog('fire');
+
+  // fire the request
+  fetchHandle = (config.fetcher || fetcher)(req, Object.assign({}, fetchOptions, {
+    signal,
+  })).then(handleResponse, handleError);
+
+  return fetchHandle;
+}
+
+function configFromURL(url, config) {
+  config = config || {};
+  if (!isUndefined(url) && (!isUndefined(URL) && url instanceof URL)) {
+    config.url = url.toString();
+  }
+  return config;
+}
+
+function isRequest(thing) {
+  if (platform.isNode) {
+    return thing instanceof FetchRequest;
+  } else if (platform.isStandardBrowserEnv) {
+    return thing instanceof (window.Request);
+  } else {
+    return thing instanceof FetchRequest;
+  }
+}
+
+function configFromRequest(request, config) {
+  config = config || {};
+  if (!isUndefined(request)) {
+    if (isString(request.url)) {
+      config.url = request.url;
+    }
+    // if (isString(request.method)) {
+    //   config.method = request.method;
+    // }
+    // if (request.headers.length > 0) {
+    //   config.headers = Object.fromEntries(request.headers.entries());
+    // }
+    // TODO(sgammon): full support for entire axios config
+  }
+  return config;
+}
+
+function fetchAdapter(config) {
+  return new Promise(function (accept, reject) {
+    try {
+      return dispatchFetch(config, accept, reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+const knownAdapters = {
+  http: httpAdapter,
+  xhr: xhrAdapter,
+  fetch: fetchAdapter
+};
+
+forEach(knownAdapters, (fn, value) => {
+  if(fn) {
     try {
       Object.defineProperty(fn, 'name', {value});
     } catch (e) {
@@ -2425,56 +2888,38 @@ utils.forEach(knownAdapters, (fn, value) => {
   }
 });
 
-const renderReason = (reason) => `- ${reason}`;
-
-const isResolvedHandle = (adapter) => utils.isFunction(adapter) || adapter === null || adapter === false;
-
 const adapters = {
   getAdapter: (adapters) => {
-    adapters = utils.isArray(adapters) ? adapters : [adapters];
+    adapters = isArray(adapters) ? adapters : [adapters];
 
     const {length} = adapters;
     let nameOrAdapter;
     let adapter;
 
-    const rejectedReasons = {};
-
     for (let i = 0; i < length; i++) {
       nameOrAdapter = adapters[i];
-      let id;
-
-      adapter = nameOrAdapter;
-
-      if (!isResolvedHandle(nameOrAdapter)) {
-        adapter = knownAdapters[(id = String(nameOrAdapter)).toLowerCase()];
-
-        if (adapter === undefined) {
-          throw new AxiosError$1(`Unknown adapter '${id}'`);
-        }
-      }
-
-      if (adapter) {
+      if((adapter = isString(nameOrAdapter) ? knownAdapters[nameOrAdapter.toLowerCase()] : nameOrAdapter)) {
         break;
       }
-
-      rejectedReasons[id || '#' + i] = adapter;
     }
 
     if (!adapter) {
-
-      const reasons = Object.entries(rejectedReasons)
-        .map(([id, state]) => `adapter ${id} ` +
-          (state === false ? 'is not supported by the environment' : 'is not available in the build')
+      if (adapter === false) {
+        throw new AxiosError$1(
+          `Adapter ${nameOrAdapter} is not supported by the environment`,
+          'ERR_NOT_SUPPORT'
         );
+      }
 
-      let s = length ?
-        (reasons.length > 1 ? 'since :\n' + reasons.map(renderReason).join('\n') : ' ' + renderReason(reasons[0])) :
-        'as no adapter specified';
-
-      throw new AxiosError$1(
-        `There is no suitable adapter to dispatch the request ` + s,
-        'ERR_NOT_SUPPORT'
+      throw new Error(
+        hasOwnProp(knownAdapters, nameOrAdapter) ?
+          `Adapter '${nameOrAdapter}' is not available in the build` :
+          `Unknown adapter '${nameOrAdapter}'`
       );
+    }
+
+    if (!isFunction(adapter)) {
+      throw new TypeError('adapter is not a function');
     }
 
     return adapter;
@@ -2599,6 +3044,36 @@ function mergeConfig$1(config1, config2) {
   }
 
   // eslint-disable-next-line consistent-return
+  function wrappedStringifiable(getter, types) {
+    return function (a, b) {
+      const value = getter(a, b);
+      if (!utils.isUndefined(value)) {
+        for (const type of types) {
+          if (value instanceof type) {
+            return value.toString();
+          }
+        }
+        return value;
+      }
+    }
+  }
+
+  // eslint-disable-next-line consistent-return
+  function wrappedTypeFactory(getter, types) {
+    return function (a, b) {
+      const value = getter(a, b);
+      if (!utils.isUndefined(value)) {
+        for (const type of types) {
+          if (value instanceof type) {
+            return type(value);
+          }
+        }
+        return value;
+      }
+    }
+  }
+
+  // eslint-disable-next-line consistent-return
   function defaultToConfig2(a, b) {
     if (!utils.isUndefined(b)) {
       return getMergedValue(undefined, b);
@@ -2617,7 +3092,7 @@ function mergeConfig$1(config1, config2) {
   }
 
   const mergeMap = {
-    url: valueFromConfig2,
+    url: wrappedStringifiable(valueFromConfig2, [URL]),
     method: valueFromConfig2,
     data: valueFromConfig2,
     baseURL: defaultToConfig2,
@@ -2629,6 +3104,8 @@ function mergeConfig$1(config1, config2) {
     withCredentials: defaultToConfig2,
     adapter: defaultToConfig2,
     responseType: defaultToConfig2,
+    fetcher: defaultToConfig2,
+    fetchOptions: defaultToConfig2,
     xsrfCookieName: defaultToConfig2,
     xsrfHeaderName: defaultToConfig2,
     onUploadProgress: defaultToConfig2,
@@ -2644,10 +3121,11 @@ function mergeConfig$1(config1, config2) {
     socketPath: defaultToConfig2,
     responseEncoding: defaultToConfig2,
     validateStatus: mergeDirectKeys,
-    headers: (a, b) => mergeDeepProperties(headersToObject(a), headersToObject(b), true)
+    headers: (a, b) => mergeDeepProperties(headersToObject(a), headersToObject(b), true),
+    parsedUrl: wrappedTypeFactory(defaultToConfig2, [URL]),
   };
 
-  utils.forEach(Object.keys(Object.assign({}, config1, config2)), function computeConfigValue(prop) {
+  utils.forEach(Object.keys(config1).concat(Object.keys(config2)), function computeConfigValue(prop) {
     const merge = mergeMap[prop] || mergeDeepProperties;
     const configValue = merge(config1[prop], config2[prop], prop);
     (utils.isUndefined(configValue) && merge !== mergeDirectKeys) || (config[prop] = configValue);
@@ -2656,7 +3134,7 @@ function mergeConfig$1(config1, config2) {
   return config;
 }
 
-const VERSION$1 = "1.5.1";
+const VERSION$1 = "1.2.1-fetch-beta5";
 
 const validators$1 = {};
 
@@ -2754,7 +3232,7 @@ const validators = validator.validators;
  *
  * @return {Axios} A new instance of Axios
  */
-class Axios$1 {
+let Axios$1 = class Axios {
   constructor(instanceConfig) {
     this.defaults = instanceConfig;
     this.interceptors = {
@@ -2777,6 +3255,10 @@ class Axios$1 {
     if (typeof configOrUrl === 'string') {
       config = config || {};
       config.url = configOrUrl;
+    } else if (!utils.isUndefined(URL) && configOrUrl instanceof URL) {
+      config = configFromURL(configOrUrl, config);
+    } else if (isRequest(configOrUrl)) {
+      config = configFromRequest(configOrUrl, config);
     } else {
       config = configOrUrl || {};
     }
@@ -2793,29 +3275,25 @@ class Axios$1 {
       }, false);
     }
 
-    if (paramsSerializer != null) {
-      if (utils.isFunction(paramsSerializer)) {
-        config.paramsSerializer = {
-          serialize: paramsSerializer
-        };
-      } else {
-        validator.assertOptions(paramsSerializer, {
-          encode: validators.function,
-          serialize: validators.function
-        }, true);
-      }
+    if (paramsSerializer !== undefined) {
+      validator.assertOptions(paramsSerializer, {
+        encode: validators.function,
+        serialize: validators.function
+      }, true);
     }
 
     // Set config.method
     config.method = (config.method || this.defaults.method || 'get').toLowerCase();
 
+    let contextHeaders;
+
     // Flatten headers
-    let contextHeaders = headers && utils.merge(
+    contextHeaders = headers && utils.merge(
       headers.common,
       headers[config.method]
     );
 
-    headers && utils.forEach(
+    contextHeaders && utils.forEach(
       ['delete', 'get', 'head', 'post', 'put', 'patch', 'common'],
       (method) => {
         delete headers[method];
@@ -2899,7 +3377,7 @@ class Axios$1 {
     const fullPath = buildFullPath(config.baseURL, config.url);
     return buildURL(fullPath, config.params, config.paramsSerializer);
   }
-}
+};
 
 // Provide aliases for supported request methods
 utils.forEach(['delete', 'get', 'head', 'options'], function forEachMethodNoData(method) {
@@ -2943,7 +3421,7 @@ const Axios$2 = Axios$1;
  *
  * @returns {CancelToken}
  */
-class CancelToken$1 {
+let CancelToken$1 = class CancelToken {
   constructor(executor) {
     if (typeof executor !== 'function') {
       throw new TypeError('executor must be a function.');
@@ -3042,7 +3520,7 @@ class CancelToken$1 {
    */
   static source() {
     let cancel;
-    const token = new CancelToken$1(function executor(c) {
+    const token = new CancelToken(function executor(c) {
       cancel = c;
     });
     return {
@@ -3050,7 +3528,7 @@ class CancelToken$1 {
       cancel
     };
   }
-}
+};
 
 const CancelToken$2 = CancelToken$1;
 
@@ -3182,8 +3660,17 @@ function createInstance(defaultConfig) {
   utils.extend(instance, context, null, {allOwnKeys: true});
 
   // Factory for creating new instances
-  instance.create = function create(instanceConfig) {
-    return createInstance(mergeConfig$1(defaultConfig, instanceConfig));
+  instance.create = function create(instanceConfigOrUrlOrRequest, instanceConfig) {
+    instanceConfig = instanceConfig || instanceConfigOrUrlOrRequest || {};
+
+    // handles the case of a raw `URL` or `Request` object being passed into the `axios` constructor. we translate it to
+    // an axios configuration, preserving any additional config properties passed in the second parameter (optional).
+    if (instanceConfigOrUrlOrRequest instanceof URL) {
+      instanceConfig = configFromURL(instanceConfigOrUrlOrRequest, instanceConfig);
+    } else if (isRequest(instanceConfigOrUrlOrRequest)) {
+      instanceConfig = configFromRequest(instanceConfigOrUrlOrRequest, instanceConfig);
+    }
+    return createInstance(mergeConfig$1(defaultConfig, instanceConfig || instanceConfigOrUrlOrRequest));
   };
 
   return instance;
@@ -3225,9 +3712,9 @@ axios.AxiosHeaders = AxiosHeaders$2;
 
 axios.formToJSON = thing => formDataToJSON(utils.isHTMLForm(thing) ? new FormData(thing) : thing);
 
-axios.getAdapter = adapters.getAdapter;
-
 axios.HttpStatusCode = HttpStatusCode$2;
+
+axios.FetchAdapter = fetchAdapter;
 
 axios.default = axios;
 
@@ -3250,11 +3737,11 @@ const {
   spread,
   toFormData,
   AxiosHeaders,
+  FetchAdapter,
   HttpStatusCode,
   formToJSON,
-  getAdapter,
   mergeConfig
 } = axios$1;
 
-export { Axios, AxiosError, AxiosHeaders, Cancel, CancelToken, CanceledError, HttpStatusCode, VERSION, all, axios$1 as default, formToJSON, getAdapter, isAxiosError, isCancel, mergeConfig, spread, toFormData };
-//# sourceMappingURL=axios.js.map
+export { Axios, AxiosError, AxiosHeaders, Cancel, CancelToken, CanceledError, FetchAdapter, HttpStatusCode, VERSION, all, axios$1 as default, formToJSON, isAxiosError, isCancel, mergeConfig, spread, toFormData };
+//# sourceMappingURL=https://axios.elide.dev/axios/1.2.1-fetch-beta5/esm/axios.js.map

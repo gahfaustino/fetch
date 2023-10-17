@@ -24,13 +24,13 @@ describe('instance', function () {
         'getUri',
         'isAxiosError',
         'mergeConfig',
-        'getAdapter',
         'VERSION',
         'default',
         'toFormData',
         'formToJSON',
         'AxiosHeaders',
-        'HttpStatusCode'
+        'HttpStatusCode',
+        'FetchAdapter'
       ].indexOf(prop) > -1) {
         continue;
       }

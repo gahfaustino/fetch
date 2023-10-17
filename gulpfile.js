@@ -1,16 +1,19 @@
 import gulp from 'gulp';
-import fs from 'fs-extra';
-import axios from './bin/githubAPI.js';
-import minimist from 'minimist'
+import rimraf from 'rimraf';
+import axios from './index.js';
 
-const argv = minimist(process.argv.slice(2));
-
-  gulp.task('default', async function(){
+gulp.task('default', async function(){
   console.log('hello!');
 });
 
 const clear = gulp.task('clear', async function() {
-  await fs.emptyDir('./dist/')
+  return await new Promise((accept, reject) => {
+    try {
+      rimraf('./dist/', accept);
+    } catch (err) {
+      reject(err);
+    }
+  })
 });
 
 const bower = gulp.task('bower', async function () {
@@ -73,10 +76,8 @@ const packageJSON = gulp.task('package', async function () {
 const env = gulp.task('env', async function () {
   var npm = JSON.parse(await fs.readFile('package.json'));
 
-  const envFilePath = './lib/env/data.js';
-
-  await fs.writeFile(envFilePath, Object.entries({
-    VERSION: (argv.bump || npm.version).replace(/^v/, '')
+  await fs.writeFile('./lib/env/data.js', Object.entries({
+    VERSION: npm.version
   }).map(([key, value]) => {
     return `export const ${key} = ${JSON.stringify(value)};`
   }).join('\n'));

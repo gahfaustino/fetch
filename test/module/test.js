@@ -35,7 +35,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const remove = async (file) => {
   console.log(`✓ Remove entry '${file}'...`);
   try {
-    await sleep(1000);
+    await sleep(100);
     await fs.remove(file);
   } catch (err) {
     console.warn(err.message);
@@ -58,93 +58,90 @@ describe('module', function () {
     await remove(BACKUP_PATH);
   });
 
-  describe('export', function () {
+  it('should have consistent ESM export', function () {
+    const namedExport = {};
+    const factoryExport = {};
 
-    it('should have consistent ESM export', function () {
-      const namedExport = {};
-      const factoryExport = {};
-
-      Object.entries(axiosFactory).forEach(([key, value]) => {
-        if (!utils.hasOwnProp(Axios, key) && !(key in instance) && ignoreList.indexOf(key) === -1) {
-          factoryExport[key] = value;
-        }
-      });
-
-      Object.entries(axios).forEach(([key, value]) => {
-        key !== 'default' && ignoreList.indexOf(key) === -1 && (namedExport[key] = value);
-      });
-
-      assert.deepStrictEqual(namedExport, factoryExport);
+    Object.entries(axiosFactory).forEach(([key, value]) => {
+      if(!utils.hasOwnProp(Axios, key) && !(key in instance) && ignoreList.indexOf(key) === -1) {
+        factoryExport[key] = value;
+      }
     });
 
-    describe('CommonJS', () => {
-      const pkgPath = path.join(__dirname, './cjs');
-
-      after(async () => {
-        await remove(path.join(pkgPath, './node_modules'));
-      });
-
-      it('should be able to be loaded with require', async function () {
-        this.timeout(30000);
-
-        await exec(`npm test --prefix ${pkgPath}`);
-      });
+    Object.entries(axios).forEach(([key, value]) => {
+      key!=='default' && ignoreList.indexOf(key) === -1 && (namedExport[key] = value);
     });
 
-    describe('ESM', () => {
-      const pkgPath = path.join(__dirname, './esm');
+    assert.deepStrictEqual(namedExport, factoryExport);
+  });
 
-      after(async () => {
-        await remove(path.join(pkgPath, './node_modules'));
-      });
+  describe('CommonJS', ()=> {
+    const pkgPath = path.join(__dirname, './cjs');
 
-      it('should be able to be loaded with import', async function () {
-        this.timeout(30000);
-
-        await exec(`npm test --prefix ${pkgPath}`);
-      });
+    after(async ()=> {
+      await remove(path.join(pkgPath, './node_modules'));
     });
 
-    describe('TS', () => {
-      const pkgPath = path.join(__dirname, './ts');
+    it('should be able to be loaded with require', async function () {
+      this.timeout(30000);
 
-      after(async () => {
-        await remove(path.join(pkgPath, './node_modules'));
-      });
+      await exec(`npm test --prefix ${pkgPath}`);
+    });
+  });
 
-      it('should be able to be loaded with import', async function () {
-        this.timeout(30000);
+  describe('ESM', ()=> {
+    const pkgPath = path.join(__dirname, './esm');
 
-        await exec(`npm test --prefix ${pkgPath}`, {});
-      });
+    after(async ()=> {
+      await remove(path.join(pkgPath, './node_modules'));
     });
 
-    describe('TS require(\'axios\')', () => {
-      const pkgPath = path.join(__dirname, './ts-require');
+    it('should be able to be loaded with import', async function () {
+      this.timeout(30000);
 
-      after(async () => {
-        await remove(path.join(pkgPath, './node_modules'));
-      });
+      await exec(`npm test --prefix ${pkgPath}`);
+    });
+  });
 
-      it('should be able to be loaded with require', async function () {
-        this.timeout(30000);
+  describe('TS', ()=> {
+    const pkgPath = path.join(__dirname, './ts');
 
-        await exec(`npm test --prefix ${pkgPath}`, {});
-      });
+    after(async ()=> {
+      await remove(path.join(pkgPath, './node_modules'));
     });
 
-    describe('TS require(\'axios\').default', () => {
-      const pkgPath = path.join(__dirname, './ts-require-default');
+    it('should be able to be loaded with import', async function () {
+      this.timeout(30000);
 
-      after(async () => {
-        await remove(path.join(pkgPath, './node_modules'));
-      });
+      await exec(`npm test --prefix ${pkgPath}`, {});
+    });
+  });
 
-      it('should be able to be loaded with require', async function () {
-        this.timeout(30000);
+  describe('TS require(\'axios\')', ()=> {
+    const pkgPath = path.join(__dirname, './ts-require');
 
-        await exec(`npm test --prefix ${pkgPath}`, {});
-      });
+    after(async ()=> {
+      await remove(path.join(pkgPath, './node_modules'));
+    });
+
+    it('should be able to be loaded with require', async function () {
+      this.timeout(30000);
+
+      await exec(`npm test --prefix ${pkgPath}`, {});
+    });
+  });
+
+  describe('TS require(\'axios\').default', ()=> {
+    const pkgPath = path.join(__dirname, './ts-require-default');
+
+    after(async ()=> {
+      await remove(path.join(pkgPath, './node_modules'));
+    });
+
+    it('should be able to be loaded with require', async function () {
+      this.timeout(30000);
+
+      await exec(`npm test --prefix ${pkgPath}`, {});
     });
   });
 

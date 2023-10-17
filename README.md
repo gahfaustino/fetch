@@ -15,7 +15,7 @@
 
 [![npm version](https://img.shields.io/npm/v/axios.svg?style=flat-square)](https://www.npmjs.org/package/axios)
 [![CDNJS](https://img.shields.io/cdnjs/v/axios.svg?style=flat-square)](https://cdnjs.com/libraries/axios)
-[![Build status](https://img.shields.io/github/actions/workflow/status/axios/axios/ci.yml?branch=v1.x&label=CI&logo=github&style=flat-square)](https://github.com/axios/axios/actions/workflows/ci.yml)
+[![Build status](https://img.shields.io/github/workflow/status/axios/axios/ci?label=CI&logo=github&style=flat-square)](https://github.com/axios/axios/actions/workflows/ci.yml)
 [![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod&style=flat-square)](https://gitpod.io/#https://github.com/axios/axios)
 [![code coverage](https://img.shields.io/coveralls/mzabriskie/axios.svg?style=flat-square)](https://coveralls.io/r/mzabriskie/axios)
 [![install size](https://img.shields.io/badge/dynamic/json?url=https://packagephobia.com/v2/api.json?p=axios&query=$.install.pretty&label=install%20size&style=flat-square)](https://packagephobia.now.sh/result?p=axios)
@@ -66,7 +66,6 @@
   - [HTML Form Posting](#-html-form-posting-browser)
   - [🆕 Progress capturing](#-progress-capturing)
   - [🆕 Rate limiting](#-progress-capturing)
-  - [🆕 AxiosHeaders](#-axiosheaders)
   - [Semver](#semver)
   - [Promises](#promises)
   - [TypeScript](#typescript)
@@ -77,6 +76,8 @@
 ## Features
 
 - Make [XMLHttpRequests](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest) from the browser
+- Make [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) requests from the browser, node.js, or pure-JS
+  runtimes like Workers, Deno, Bun, etc.
 - Make [http](https://nodejs.org/api/http.html) requests from node.js
 - Supports the [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise) API
 - Intercept request and response
@@ -166,9 +167,26 @@ Using unpkg CDN:
 <script src="https://unpkg.com/axios@1.1.2/dist/axios.min.js"></script>
 ```
 
+### Pure JS environments
+
+Using Axios in **Deno**:
+```js
+import axios from "https://cdn.jsdelivr.net/npm/axios@1.1.2/dist/generic/axios.min.mjs";
+```
+
+Using in CloudFlare Workers, Bun, and other environments which support the Fetch API:
+```js
+{npm|pnpm|yarn} install axios
+```
+
+Then:
+```js
+import axios from "axios/generic";
+```
+
 ## Example
 
-> **Note**: CommonJS usage  
+> **Note** CommonJS usage
 > In order to gain the TypeScript typings (for intellisense / autocomplete) while using CommonJS imports with `require()`, use the following approach:
 
 ```js
@@ -216,7 +234,7 @@ async function getUser() {
 }
 ```
 
-> **Note**: `async/await` is part of ECMAScript 2017 and is not supported in Internet
+> **Note** `async/await` is part of ECMAScript 2017 and is not supported in Internet
 > Explorer and older browsers, so use with caution.
 
 Performing a `POST` request
@@ -287,6 +305,9 @@ axios({
 ```js
 // Send a GET request (default method)
 axios('/user/12345');
+
+// You can also use a `URL` object
+axios(new URL('https://example.com/user/12345'));
 ```
 
 ### Request method aliases
@@ -347,7 +368,8 @@ These are the available config options for making requests. Only the `url` is re
 
 ```js
 {
-  // `url` is the server URL that will be used for the request
+  // `url` is the server URL that will be used for the request. you can
+  // also pass `new URL(...)`, in environments that support it.
   url: '/user',
 
   // `method` is the request method to be used when making the request
@@ -385,18 +407,12 @@ These are the available config options for making requests. Only the `url` is re
   params: {
     ID: 12345
   },
-  
-  // `paramsSerializer` is an optional config that allows you to customize serializing `params`. 
-  paramsSerializer: {
 
-    //Custom encoder function which sends key/value pairs in an iterative fashion.
-    encode?: (param: string): string => { /* Do custom operations here and return transformed string */ }, 
-    
-    // Custom serializer function for the entire parameter. Allows user to mimic pre 1.x behaviour.
-    serialize?: (params: Record<string, any>, options?: ParamsSerializerOptions ), 
-    
-    //Configuration for formatting array indexes in the params. 
-    indexes: false // Three available options: (1) indexes: null (leads to no brackets), (2) (default) indexes: false (leads to empty brackets), (3) indexes: true (leads to brackets with indexes).    
+  // `paramsSerializer` is an optional config in charge of serializing `params`
+  paramsSerializer: {
+    encode?: (param: string): string => { /* Do custom ops here and return transformed string */ }, // custom encoder function; sends Key/Values in an iterative fashion
+    serialize?: (params: Record<string, any>, options?: ParamsSerializerOptions ), // mimic pre 1.x behavior and send entire params object to a custom serializer func. Allows consumer to control how params are serialized.
+    indexes: false // array indexes format (null - no brackets, false (default) - empty brackets, true - brackets with indexes)
   },
 
   // `data` is the data to be sent as the request body
@@ -499,9 +515,6 @@ These are the available config options for making requests. Only the `url` is re
   // Only either `socketPath` or `proxy` can be specified.
   // If both are specified, `socketPath` is used.
   socketPath: null, // default
-  
-  // `transport` determines the transport method that will be used to make the request. If defined, it will be used. Otherwise, if `maxRedirects` is 0, the default `http` or `https` library will be used, depending on the protocol specified in `protocol`. Otherwise, the `httpFollow` or `httpsFollow` library will be used, again depending on the protocol, which can handle redirects.
-  transport: undefined, // default
 
   // `httpAgent` and `httpsAgent` define a custom agent to be used when performing http
   // and https requests, respectively, in node.js. This allows options to be added like
@@ -538,6 +551,114 @@ These are the available config options for making requests. Only the `url` is re
 
   // an alternative way to cancel Axios requests using AbortController
   signal: new AbortController().signal,
+
+  // pre-parsed URL, to avoid re-parsing the URL when using the fetch adapter.
+  // optional.
+  parsedUrl: new URL('...'),
+
+  // fetch implementation to use. defaults to the native fetch implementation for
+  // the active platform, or falls back to a polyfill (`whatwg-fetch`), or a cross-
+  // platform polyfill (`cross-fetch`).
+  fetcher: fetch,
+
+  // options passed to the underlying `fetch` implementation; only active when
+  // `adapter` is set to `{adapter: 'fetch'}` or `{adapter: axios.FetchAdapter}`.
+  // default values below are for `fetch` implementation in browsers. certain fetch
+  // implementations may require different or limited options.
+  //
+  // see MDN for more information (`options` parameter):
+  // https://developer.mozilla.org/en-US/docs/Web/API/Request/Request
+  fetchOptions: {
+    // the general request mode to apply to an operation. options are:
+    // - `cors` (default): allow cross-origin requests.
+    // - `no-cors`: do not allow cross-origin requests.
+    // - `same-origin`: only allow requests to the same origin.
+    //
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/mode
+    mode: 'cors',
+
+    // should the user's credentials and cookies be sent with the request? options are:
+    // - `same-origin` (default): only send for same-origin requests.
+    // - `include`: include credentials for all requests.
+    // - `omit`: do not send credentials.
+    //
+    // DANGER: Be careful with this property. Setting the request to `include` can expose
+    // users to serious privacy and security risks. Make sure the origins you are exchanging
+    // data with use HTTPS and are covered by other strong security practices.
+    //
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/credentials
+    credentials: 'same-origin',
+
+    // allow caching of fetched responses? options are:
+    // - `default` (default): default environment behavior. in browsers, caching
+    //   is typically enabled for GET requests that are marked cacheable.
+    // - `no-store`: do not store responses in cache.
+    // - `reload`: fetch from server and update cache.
+    // - `no-cache`: fetch from server and do not update cache.
+    // - `force-cache`: use cache if available, otherwise fetch from server and
+    //    update the cache.
+    // - `only-if-cached`: use cache if available, otherwise fail. this mode can
+    //   only be used when `mode` is set to `same-origin`.
+    //
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/cache
+    cache: 'default',
+
+    // follow redirects returned in fetch calls? options are:
+    // - `follow` (default): follow redirects
+    // - `error`: reject with an error
+    // - `manual`: handle redirects manually
+    //
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/redirect
+    redirect: 'follow',
+
+    // what referrer, if any, should be sent with requests? options are:
+    // - `about:client` (default): anonymized referrer is sent.
+    // - `no-referrer`: no referrer is sent.
+    // - `client`: full referrer is sent.
+    // - `<url>`: a custom URL value can be set and sent.
+    //
+    // See also: `referrerPolicy`.
+    //
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/referrer
+    referrer: 'about:client',
+
+    // what policy should be applied when deciding whether to send a referrer? options are:
+    // - `strict-origin-when-cross-origin` (default): send the origin, path, and querystring
+    //    when performing same-origin requests. For cross-origin requests, send only the origin.
+    //    The referrer is never sent to non-secure origins in this mode.
+    // - `no-referrer-when-downgrade`: send referrer only when navigating to a more or
+    //   equivalently secure origin.
+    // - `no-referrer`: never send a referrer.
+    // - `origin`: send the origin only.
+    // - `origin-when-cross-origin`: send only the origin when interacting with a different origin.
+    // - `same-origin`: send the referrer only when interacting with same-origin endpoints.
+    // - `strict-origin`: send the origin only when the protocol level stays the same.
+    // - `unsafe-url`: send the full referrer URL unconditionally to all origins.
+    //
+    // See also: https://developer.mozilla.org/en-US/docs/Web/API/Request/referrerPolicy
+    referrerPolicy: 'strict-origin-when-cross-origin',
+
+    // should an integrity value be applied and checked for the request? options are:
+    // - no value (default): no integrity is checked.
+    // - `<hash-algorithm>-<base64-value>`: integrity is checked using the specified algorithm.
+    //   for example, `sha256-<hash>`.
+    //
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/integrity
+    integrity: 'sha256-<base64-encoded-hash>',
+
+    // should the connection to the server be kept alive? options are:
+    // - true (default): keep the connection alive.
+    // - false: close the connection after the request is complete.
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/Request
+    keepalive: true,
+
+    // an `AbortSignal` object which can be used to communicate with or abort the request;
+    // if both this property and the main config `signal` property are set, this property
+    // takes precedence.
+    //
+    // MDN: https://developer.mozilla.org/en-US/docs/Web/API/Request/signal
+    signal: new AbortController().signal
+  },
 
   // `decompress` indicates whether or not the response body should be decompressed
   // automatically. If set to `true` will also remove the 'content-encoding' header
@@ -771,36 +892,6 @@ and when the response was fulfilled
 
 Read [the interceptor tests](./test/specs/interceptors.spec.js) for seeing all this in code.
 
-## Error Types
-
-There are many different axios error messages that can appear that can provide basic information about the specifics of the error and where opportunities may lie in debugging.
-
-The general structure of axios errors is as follows:
-| Property  | Definition  |
-| -------- | ----------  |
-| message  | A quick summary of the error message and the status it failed with. |
-| name     | This defines where the error originated from. For axios, it will always be an 'AxiosError'. |
-| stack    | Provides the stack trace of the error. | 
-| config   | An axios config object with specific instance configurations defined by the user from when the request was made |
-| code     | Represents an axios identified error. The table below lists out specific definitions for internal axios error.  |
-| status   | HTTP response status code. See [here](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes) for common HTTP response status code meanings. 
-
-Below is a list of potential axios identified error
-| Code  |  Definition   |
-| -------- | ----------  |
-| ERR_BAD_OPTION_VALUE | Invalid or unsupported value provided in axios configuration. |
-| ERR_BAD_OPTION | Invalid option provided in axios configuration. |
-| ECONNABORTED | Request timed out due to exceeding timeout specified in axios configuration. |
-| ETIMEDOUT | Request timed out due to exceeding default axios timelimit. |
-| ERR_NETWORK | Network-related issue.
-| ERR_FR_TOO_MANY_REDIRECTS | Request is redirected too many times; exceeds max redirects specified in axios configuration.
-| ERR_DEPRECATED | Deprecated feature or method used in axios. 
-| ERR_BAD_RESPONSE | Response cannot be parsed properly or is in an unexpected format. 
-| ERR_BAD_REQUEST | Requested has unexpected format or missing required parameters. |
-| ERR_CANCELED | Feature or method is canceled explicitly by the user.   
-| ERR_NOT_SUPPORT | Feature or method not supported in the current axios environment. 
-| ERR_INVALID_URL | Invalid URL provided for axios request.
-
 ## Handling Errors
 
 the default behavior is to reject every response that returns with a status code that falls out of the range of 2xx and treat it as an error.
@@ -968,7 +1059,8 @@ axios.post('https://something.com/', querystring.stringify({ foo: 'bar' }));
 
 You can also use the [`qs`](https://github.com/ljharb/qs) library.
 
-> **Note**: The `qs` library is preferable if you need to stringify nested objects, as the `querystring` method has [known issues](https://github.com/nodejs/node-v0.x-archive/issues/1665) with that use case.
+> **Note**
+> The `qs` library is preferable if you need to stringify nested objects, as the `querystring` method has [known issues](https://github.com/nodejs/node-v0.x-archive/issues/1665) with that use case.
 
 ### 🆕 Automatic serialization to URLSearchParams
 
@@ -1084,7 +1176,8 @@ Axios FormData serializer supports some special endings to perform the following
 - `{}` - serialize the value with JSON.stringify
 - `[]` - unwrap the array-like object as separate fields with the same key
 
-> **Note**: unwrap/expand operation will be used by default on arrays and FileList objects
+> **Note**
+> unwrap/expand operation will be used by default on arrays and FileList objects
 
 FormData serializer supports additional options via `config.formSerializer: object` property to handle rare cases:
 
@@ -1271,7 +1364,7 @@ const {data} = await axios.post(SERVER_URL, readableStream, {
 ````
 
 > **Note:**
-> Capturing FormData upload progress is not currently supported in node.js environments.
+> Capturing FormData upload progress is currently not currently supported in node.js environments.
 
 > **⚠️ Warning**
 > It is recommended to disable redirects by setting maxRedirects: 0 to upload the stream in the **node.js** environment,
@@ -1291,260 +1384,6 @@ const {data} = await axios.post(LOCAL_SERVER_URL, myBuffer, {
   maxRate: [100 * 1024], // 100KB/s limit
 });
 ```
-
-## 🆕 AxiosHeaders
-
-Axios has its own `AxiosHeaders` class to manipulate headers using a Map-like API that guarantees caseless work.
-Although HTTP is case-insensitive in headers, Axios will retain the case of the original header for stylistic reasons
-and for a workaround when servers mistakenly consider the header's case.
-The old approach of directly manipulating headers object is still available, but deprecated and not recommended for future usage.
-
-### Working with headers
-
-An AxiosHeaders object instance can contain different types of internal values. that control setting and merging logic.
-The final headers object with string values is obtained by Axios by calling the `toJSON` method.
-
-> Note: By JSON here we mean an object consisting only of string values intended to be sent over the network.
-
-The header value can be one of the following types:
-- `string` - normal string value that will be sent to the server
-- `null` - skip header when rendering to JSON
-- `false` - skip header when rendering to JSON, additionally indicates that `set` method must be called with `rewrite` option set to `true`
-  to overwrite this value (Axios uses this internally to allow users to opt out of installing certain headers like `User-Agent` or `Content-Type`)
-- `undefined` - value is not set
-
-> Note: The header value is considered set if it is not equal to undefined.
-
-The headers object is always initialized inside interceptors and transformers:
-
-```ts
-  axios.interceptors.request.use((request: InternalAxiosRequestConfig) => {
-      request.headers.set('My-header', 'value');
-
-      request.headers.set({
-        "My-set-header1": "my-set-value1",
-        "My-set-header2": "my-set-value2"
-      });
-      
-      request.headers.set('User-Agent', false); // disable subsequent setting the header by Axios
-
-      request.headers.setContentType('text/plain');
-    
-      request.headers['My-set-header2'] = 'newValue' // direct access is deprecated
-    
-      return request;
-    }
-  );
-````
-
-You can iterate over an `AxiosHeaders` instance using a `for...of` statement:
-
-````js
-const headers = new AxiosHeaders({
-  foo: '1',
-  bar: '2',
-  baz: '3'
-});
-
-for(const [header, value] of headers) {
-  console.log(header, value);
-}
-
-// foo 1
-// bar 2
-// baz 3
-````
-
-### new AxiosHeaders(headers?)
-
-Constructs a new `AxiosHeaders` instance. 
-
-```
-constructor(headers?: RawAxiosHeaders | AxiosHeaders | string);
-```
-
-If the headers object is a string, it will be parsed as RAW HTTP headers.
-
-````js
-const headers = new AxiosHeaders(`
-Host: www.bing.com
-User-Agent: curl/7.54.0
-Accept: */*`);
-
-console.log(headers);
-
-// Object [AxiosHeaders] {
-//   host: 'www.bing.com',
-//   'user-agent': 'curl/7.54.0',
-//   accept: '*/*'
-// }
-````
-
-### AxiosHeaders#set
-
-```ts
-set(headerName, value: Axios, rewrite?: boolean);
-set(headerName, value, rewrite?: (this: AxiosHeaders, value: string, name: string, headers: RawAxiosHeaders) => boolean);
-set(headers?: RawAxiosHeaders | AxiosHeaders | string, rewrite?: boolean);
-```
-
-The `rewrite` argument controls the overwriting behavior:
-- `false` - do not overwrite if header's value is set (is not `undefined`)
-- `undefined` (default) - overwrite the header unless its value is set to `false`
-- `true` - rewrite anyway
-
-The option can also accept a user-defined function that determines whether the value should be overwritten or not.
-
-Returns `this`.
-
-### AxiosHeaders#get(header)
-
-```
-  get(headerName: string, matcher?: true | AxiosHeaderMatcher): AxiosHeaderValue;
-  get(headerName: string, parser: RegExp): RegExpExecArray | null;
-````
-
-Returns the internal value of the header. It can take an extra argument to parse the header's value with `RegExp.exec`,
-matcher function or internal key-value parser.
-
-```ts
-const headers = new AxiosHeaders({
-  'Content-Type': 'multipart/form-data; boundary=Asrf456BGe4h'
-});
-
-console.log(headers.get('Content-Type')); 
-// multipart/form-data; boundary=Asrf456BGe4h
-
-console.log(headers.get('Content-Type', true)); // parse key-value pairs from a string separated with \s,;= delimiters:
-// [Object: null prototype] {
-//   'multipart/form-data': undefined,
-//    boundary: 'Asrf456BGe4h'
-// }
-
-
-console.log(headers.get('Content-Type', (value, name, headers) => {
-  return String(value).replace(/a/g, 'ZZZ');
-}));
-// multipZZZrt/form-dZZZtZZZ; boundZZZry=Asrf456BGe4h
-
-console.log(headers.get('Content-Type', /boundary=(\w+)/)?.[0]);
-// boundary=Asrf456BGe4h
-
-```
-
-Returns the value of the header.
-
-### AxiosHeaders#has(header, matcher?)
-
-```
-has(header: string, matcher?: AxiosHeaderMatcher): boolean;
-```
-
-Returns `true` if the header is set (has no `undefined` value).
-
-### AxiosHeaders#delete(header, matcher?)
-
-```
-delete(header: string | string[], matcher?: AxiosHeaderMatcher): boolean;
-```
-
-Returns `true` if at least one header has been removed.
-
-### AxiosHeaders#clear(matcher?)
-
-```
-clear(matcher?: AxiosHeaderMatcher): boolean;
-```
-
-Removes all headers. 
-Unlike the `delete` method matcher, this optional matcher will be used to match against the header name rather than the value.
-
-```ts
-const headers = new AxiosHeaders({
-  'foo': '1',
-  'x-foo': '2',
-  'x-bar': '3',
-});
-
-console.log(headers.clear(/^x-/)); // true
-
-console.log(headers.toJSON()); // [Object: null prototype] { foo: '1' }
-```
-
-Returns `true` if at least one header has been cleared.
-
-### AxiosHeaders#normalize(format);
-
-If the headers object was changed directly, it can have duplicates with the same name but in different cases.
-This method normalizes the headers object by combining duplicate keys into one.
-Axios uses this method internally after calling each interceptor.
-Set `format` to true for converting headers name to lowercase and capitalize the initial letters (`cOntEnt-type` => `Content-Type`)
-
-```js
-const headers = new AxiosHeaders({
-  'foo': '1',
-});
-
-headers.Foo = '2';
-headers.FOO = '3';
-
-console.log(headers.toJSON()); // [Object: null prototype] { foo: '1', Foo: '2', FOO: '3' }
-console.log(headers.normalize().toJSON()); // [Object: null prototype] { foo: '3' }
-console.log(headers.normalize(true).toJSON()); // [Object: null prototype] { Foo: '3' }
-```
-
-Returns `this`.
-
-### AxiosHeaders#concat(...targets)
-
-```
-concat(...targets: Array<AxiosHeaders | RawAxiosHeaders | string | undefined | null>): AxiosHeaders;
-```
-
-Merges the instance with targets into a new `AxiosHeaders` instance. If the target is a string, it will be parsed as RAW HTTP headers.
-
-Returns a new `AxiosHeaders` instance.
-
-### AxiosHeaders#toJSON(asStrings?)
-
-````
-toJSON(asStrings?: boolean): RawAxiosHeaders;
-````
-
-Resolve all internal headers values into a new null prototype object. 
-Set `asStrings` to true to resolve arrays as a string containing all elements, separated by commas.
-
-### AxiosHeaders.from(thing?)
-
-````
-from(thing?: AxiosHeaders | RawAxiosHeaders | string): AxiosHeaders;
-````
-
-Returns a new `AxiosHeaders` instance created from the raw headers passed in,
-or simply returns the given headers object if it's an `AxiosHeaders` instance.
-
-### AxiosHeaders.concat(...targets)
-
-````
-concat(...targets: Array<AxiosHeaders | RawAxiosHeaders | string | undefined | null>): AxiosHeaders;
-````
-
-Returns a new `AxiosHeaders` instance created by merging the target objects.
-
-### Shortcuts
-
-The following shortcuts are available:
-
-- `setContentType`, `getContentType`, `hasContentType`
-
-- `setContentLength`, `getContentLength`, `hasContentLength`
-
-- `setAccept`, `getAccept`, `hasAccept`
-
-- `setUserAgent`, `getUserAgent`, `hasUserAgent`
-
-- `setContentEncoding`, `getContentEncoding`, `hasContentEncoding`
-
 
 ## Semver
 

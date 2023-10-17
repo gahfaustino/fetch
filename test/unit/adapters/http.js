@@ -11,26 +11,19 @@ import fs from 'fs';
 import path from 'path';
 let server, proxy;
 import AxiosError from '../../../lib/core/AxiosError.js';
-import FormDataLegacy from 'form-data';
+import FormData from 'form-data';
 import formidable from 'formidable';
 import express from 'express';
 import multer from 'multer';
 import bodyParser from 'body-parser';
 const isBlobSupported = typeof Blob !== 'undefined';
-import {Throttle} from 'stream-throttle';
 import devNull from 'dev-null';
 import {AbortController} from 'abortcontroller-polyfill/dist/cjs-ponyfill.js';
 import {__setProxy} from "../../../lib/adapters/http.js";
-import {FormData as FormDataPolyfill, Blob as BlobPolyfill, File as FilePolyfill} from 'formdata-node';
-
-const FormDataSpecCompliant = typeof FormData !== 'undefined' ? FormData : FormDataPolyfill;
-const BlobSpecCompliant = typeof Blob !== 'undefined' ? Blob : BlobPolyfill;
-const FileSpecCompliant = typeof File !== 'undefined' ? File : FilePolyfill;
+import {startHTTPServer, LOCAL_SERVER_URL} from "./http-server-utils.js";
 
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-import getStream from 'get-stream';
 
 function setTimeoutAsync(ms) {
   return new Promise(resolve=> setTimeout(resolve, ms));
@@ -40,7 +33,6 @@ const pipelineAsync = util.promisify(stream.pipeline);
 const finishedAsync = util.promisify(stream.finished);
 const gzip = util.promisify(zlib.gzip);
 const deflate = util.promisify(zlib.deflate);
-const deflateRaw = util.promisify(zlib.deflateRaw);
 const brotliCompress = util.promisify(zlib.brotliCompress);
 
 function toleranceRange(positive, negative) {
@@ -53,62 +45,6 @@ function toleranceRange(positive, negative) {
 }
 
 var noop = ()=> {};
-
-const LOCAL_SERVER_URL = 'http://localhost:4444';
-
-const SERVER_HANDLER_STREAM_ECHO = (req, res) => req.pipe(res);
-
-function startHTTPServer(options) {
-
-  const {handler, useBuffering = false, rate = undefined, port = 4444} = typeof options === 'function' ? {
-    handler: options
-  } : options || {};
-
-  return new Promise((resolve, reject) => {
-    http.createServer(handler || async function (req, res) {
-      try {
-        req.headers['content-length'] && res.setHeader('content-length', req.headers['content-length']);
-
-        var dataStream = req;
-
-        if (useBuffering) {
-          dataStream = stream.Readable.from(await getStream(req));
-        }
-
-        var streams = [dataStream];
-
-        if (rate) {
-          streams.push(new Throttle({rate}))
-        }
-
-        streams.push(res);
-
-        stream.pipeline(streams, (err) => {
-          err && console.log('Server warning: ' + err.message)
-        });
-      } catch (err){
-        console.warn('HTTP server error:', err);
-      }
-
-    }).listen(port, function (err) {
-      err ? reject(err) : resolve(this);
-    });
-  });
-}
-
-const handleFormData = (req) => {
-  return new Promise((resolve, reject) => {
-    const form = new formidable.IncomingForm();
-
-    form.parse(req, (err, fields, files) => {
-      if (err) {
-        return reject(err);
-      }
-
-      resolve({fields, files});
-    });
-  });
-}
 
 function generateReadableStream(length = 1024 * 1024, chunkSize = 10 * 1024, sleep = 50) {
   return stream.Readable.from(async function* (){
@@ -515,17 +451,13 @@ describe('supports http with nodejs', function () {
     describe('algorithms', ()=> {
       const responseBody ='str';
 
-      for (const [typeName, zipped] of Object.entries({
+      for (const [type, zipped] of Object.entries({
         gzip: gzip(responseBody),
-        GZIP: gzip(responseBody),
         compress: gzip(responseBody),
         deflate: deflate(responseBody),
-        'deflate-raw': deflateRaw(responseBody),
         br: brotliCompress(responseBody)
       })) {
-        const type = typeName.split('-')[0];
-
-        describe(`${typeName} decompression`, async () => {
+        describe(`${type} decompression`, async () => {
           it(`should support decompression`, async () => {
             server = await startHTTPServer(async (req, res) => {
               res.setHeader('Content-Encoding', type);
@@ -631,12 +563,12 @@ describe('supports http with nodejs', function () {
     });
   });
 
-  it('should provides a default User-Agent header', function (done) {
+  it('should provide a default User-Agent header', function (done) {
     server = http.createServer(function (req, res) {
       res.end(req.headers['user-agent']);
     }).listen(4444, function () {
       axios.get('http://localhost:4444/').then(function (res) {
-        assert.ok(/^axios\/[\d.]+[-]?[a-z]*[.]?[\d]+$/.test(res.data), `User-Agent header does not match: ${res.data}`);
+        assert.ok(/^axios\/[\d.]+[-]?[a-z]*[.]?[\d]+\-[a-z0-9\-]*$/.test(res.data), `User-Agent header does not match: ${res.data}`);
         done();
       }).catch(done);
     });
@@ -1575,97 +1507,44 @@ describe('supports http with nodejs', function () {
   });
 
   describe('FormData', function () {
-    describe('form-data instance (https://www.npmjs.com/package/form-data)', (done) => {
-      it('should allow passing FormData', function (done) {
-        var form = new FormDataLegacy();
-        var file1 = Buffer.from('foo', 'utf8');
-        const image = path.resolve(__dirname, './axios.png');
-        const fileStream = fs.createReadStream(image);
+    it('should allow passing FormData', function (done) {
+      var form = new FormData();
+      var file1 = Buffer.from('foo', 'utf8');
 
-        const stat = fs.statSync(image);
-
-        form.append('foo', "bar");
-        form.append('file1', file1, {
-          filename: 'bar.jpg',
-          filepath: 'temp/bar.jpg',
-          contentType: 'image/jpeg'
-        });
-
-        form.append('fileStream', fileStream);
-
-        server = http.createServer(function (req, res) {
-          var receivedForm = new formidable.IncomingForm();
-
-          assert.ok(req.rawHeaders.find(header => header.toLowerCase() === 'content-length'));
-
-          receivedForm.parse(req, function (err, fields, files) {
-            if (err) {
-              return done(err);
-            }
-
-            res.end(JSON.stringify({
-              fields: fields,
-              files: files
-            }));
-          });
-        }).listen(4444, function () {
-          axios.post('http://localhost:4444/', form, {
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            }
-          }).then(function (res) {
-            assert.deepStrictEqual(res.data.fields, {foo: 'bar'});
-
-            assert.strictEqual(res.data.files.file1.mimetype, 'image/jpeg');
-            assert.strictEqual(res.data.files.file1.originalFilename, 'temp/bar.jpg');
-            assert.strictEqual(res.data.files.file1.size, 3);
-
-            assert.strictEqual(res.data.files.fileStream.mimetype, 'image/png');
-            assert.strictEqual(res.data.files.fileStream.originalFilename, 'axios.png');
-            assert.strictEqual(res.data.files.fileStream.size, stat.size);
-
-            done();
-          }).catch(done);
-        });
+      form.append('foo', "bar");
+      form.append('file1', file1, {
+        filename: 'bar.jpg',
+        filepath: 'temp/bar.jpg',
+        contentType: 'image/jpeg'
       });
-    });
 
-    describe('SpecCompliant FormData', (done) => {
-      it('should allow passing FormData', async function () {
-        server = await startHTTPServer(async (req, res) => {
-          const {fields, files} = await handleFormData(req);
+      server = http.createServer(function (req, res) {
+        var receivedForm = new formidable.IncomingForm();
+
+        receivedForm.parse(req, function (err, fields, files) {
+          if (err) {
+            return done(err);
+          }
 
           res.end(JSON.stringify({
-            fields,
-            files
+            fields: fields,
+            files: files
           }));
         });
+      }).listen(4444, function () {
+        axios.post('http://localhost:4444/', form, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }).then(function (res) {
+          assert.deepStrictEqual(res.data.fields, {foo: 'bar'});
 
-        const form = new FormDataSpecCompliant();
+          assert.strictEqual(res.data.files.file1.mimetype, 'image/jpeg');
+          assert.strictEqual(res.data.files.file1.originalFilename, 'temp/bar.jpg');
+          assert.strictEqual(res.data.files.file1.size, 3);
 
-        const blobContent = 'blob-content';
-
-        const blob = new BlobSpecCompliant([blobContent], {type: 'image/jpeg'})
-
-        form.append('foo1', 'bar1');
-        form.append('foo2', 'bar2');
-
-        form.append('file1', blob);
-
-        const {data} = await axios.post(LOCAL_SERVER_URL, form, {
-          maxRedirects: 0
-        });
-
-        assert.deepStrictEqual(data.fields, {foo1: 'bar1' ,'foo2': 'bar2'});
-
-        assert.deepStrictEqual(typeof data.files.file1, 'object');
-
-        const {size, mimetype, originalFilename} = data.files.file1;
-
-        assert.deepStrictEqual(
-          {size, mimetype, originalFilename},
-          {mimetype: 'image/jpeg', originalFilename: 'blob', size: Buffer.from(blobContent).byteLength}
-        );
+          done();
+        }).catch(done);
       });
     });
 
@@ -1705,24 +1584,6 @@ describe('supports http with nodejs', function () {
           }, done)
         });
       });
-    });
-  });
-
-  describe('Blob', function () {
-    it('should support Blob', async () => {
-      server = await startHTTPServer(async (req, res) => {
-        res.end(await getStream(req));
-      });
-
-      const blobContent = 'blob-content';
-
-      const blob = new BlobSpecCompliant([blobContent], {type: 'image/jpeg'})
-
-      const {data} = await axios.post(LOCAL_SERVER_URL, blob, {
-        maxRedirects: 0
-      });
-
-      assert.deepStrictEqual(data, blobContent);
     });
   });
 
@@ -2102,81 +1963,4 @@ describe('supports http with nodejs', function () {
       }
     });
   })
-
-  it('should properly handle synchronous errors inside the adapter', function () {
-    return assert.rejects(() => axios.get('http://192.168.0.285'), /Invalid URL/);
-  });
-
-  it('should support function as paramsSerializer value', async () => {
-    server = await startHTTPServer((req, res) => res.end(req.url));
-
-    const {data} = await axios.post(LOCAL_SERVER_URL, 'test', {
-      params: {
-        x: 1
-      },
-      paramsSerializer: () => 'foo',
-      maxRedirects: 0
-    });
-
-    assert.strictEqual(data, '/?foo');
-  });
-
-  describe('DNS', function() {
-    it('should support custom DNS lookup function', async function () {
-      server = await startHTTPServer(SERVER_HANDLER_STREAM_ECHO);
-
-      const payload = 'test';
-
-      let isCalled = false;
-
-      const {data} = await axios.post(`http://fake-name.axios:4444`, payload,{
-        lookup: (hostname, opt, cb) =>  {
-          isCalled = true;
-          cb(null, '127.0.0.1', 4);
-        }
-      });
-
-      assert.ok(isCalled);
-
-      assert.strictEqual(data, payload);
-    });
-
-    it('should support custom DNS lookup function (async)', async function () {
-      server = await startHTTPServer(SERVER_HANDLER_STREAM_ECHO);
-
-      const payload = 'test';
-
-      let isCalled = false;
-
-      const {data} = await axios.post(`http://fake-name.axios:4444`, payload,{
-        lookup: async (hostname, opt) =>  {
-          isCalled = true;
-          return ['127.0.0.1', 4];
-        }
-      });
-
-      assert.ok(isCalled);
-
-      assert.strictEqual(data, payload);
-    });
-
-    it('should support custom DNS lookup function that returns only IP address (async)', async function () {
-      server = await startHTTPServer(SERVER_HANDLER_STREAM_ECHO);
-
-      const payload = 'test';
-
-      let isCalled = false;
-
-      const {data} = await axios.post(`http://fake-name.axios:4444`, payload,{
-        lookup: async (hostname, opt) =>  {
-          isCalled = true;
-          return '127.0.0.1';
-        }
-      });
-
-      assert.ok(isCalled);
-
-      assert.strictEqual(data, payload);
-    });
-  });
 });

@@ -12,17 +12,8 @@ console.log(`Axios version: v${axios.VERSION}`);
 console.log(`Axios build version: v${axiosBuild.VERSION}`);
 console.log(`----------------------------`);
 
-assert.strictEqual(
-  version,
-  axios.VERSION,
-  `Version mismatch between package and Axios ${version} != ${axios.VERSION}`
-);
-
-assert.strictEqual(
-  version,
-  axiosBuild.VERSION,
-  `Version mismatch between package and build ${version} != ${axiosBuild.VERSION}`
-);
+assert.strictEqual(version, axios.VERSION, `Version mismatch between package and Axios`);
+assert.strictEqual(version, axiosBuild.VERSION, `Version mismatch between package and build`);
 
 console.log('✔️ PASSED\n');
 

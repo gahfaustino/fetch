@@ -1,28 +1,16 @@
-// Axios v1.5.1 Copyright (c) 2023 Matt Zabriskie and contributors
+// Axios v1.2.1-fetch-beta5 Copyright (c) 2023 Matt Zabriskie and contributors
 'use strict';
 
 const FormData$1 = require('form-data');
 const url = require('url');
-const proxyFromEnv = require('proxy-from-env');
+const nodeAbortController = require('node-abort-controller');
+const fetch = require('cross-fetch');
 const http = require('http');
 const https = require('https');
-const util = require('util');
 const followRedirects = require('follow-redirects');
 const zlib = require('zlib');
 const stream = require('stream');
 const EventEmitter = require('events');
-
-function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
-
-const FormData__default = /*#__PURE__*/_interopDefaultLegacy(FormData$1);
-const url__default = /*#__PURE__*/_interopDefaultLegacy(url);
-const http__default = /*#__PURE__*/_interopDefaultLegacy(http);
-const https__default = /*#__PURE__*/_interopDefaultLegacy(https);
-const util__default = /*#__PURE__*/_interopDefaultLegacy(util);
-const followRedirects__default = /*#__PURE__*/_interopDefaultLegacy(followRedirects);
-const zlib__default = /*#__PURE__*/_interopDefaultLegacy(zlib);
-const stream__default = /*#__PURE__*/_interopDefaultLegacy(stream);
-const EventEmitter__default = /*#__PURE__*/_interopDefaultLegacy(EventEmitter);
 
 function bind(fn, thisArg) {
   return function wrap() {
@@ -216,16 +204,12 @@ const isStream = (val) => isObject(val) && isFunction(val.pipe);
  * @returns {boolean} True if value is an FormData, otherwise false
  */
 const isFormData = (thing) => {
-  let kind;
+  const pattern = '[object FormData]';
   return thing && (
-    (typeof FormData === 'function' && thing instanceof FormData) || (
-      isFunction(thing.append) && (
-        (kind = kindOf(thing)) === 'formdata' ||
-        // detect form-data instance
-        (kind === 'object' && isFunction(thing.toString) && thing.toString() === '[object FormData]')
-      )
-    )
-  )
+    (typeof FormData === 'function' && thing instanceof FormData) ||
+    toString.call(thing) === pattern ||
+    (isFunction(thing.toString) && thing.toString() === pattern)
+  );
 };
 
 /**
@@ -309,11 +293,7 @@ function findKey(obj, key) {
   return null;
 }
 
-const _global = (() => {
-  /*eslint no-undef:0*/
-  if (typeof globalThis !== "undefined") return globalThis;
-  return typeof self !== "undefined" ? self : (typeof window !== 'undefined' ? window : global)
-})();
+const _global = typeof self === "undefined" ? typeof global === "undefined" ? undefined : global : self;
 
 const isContextDefined = (context) => !isUndefined(context) && context !== _global;
 
@@ -544,7 +524,7 @@ const matchAll = (regExp, str) => {
 const isHTMLForm = kindOfTest('HTMLFormElement');
 
 const toCamelCase = str => {
-  return str.toLowerCase().replace(/[-_\s]([a-z\d])(\w*)/g,
+  return str.toLowerCase().replace(/[_-\s]([a-z\d])(\w*)/g,
     function replacer(m, p1, p2) {
       return p1.toUpperCase() + p2;
     }
@@ -552,7 +532,9 @@ const toCamelCase = str => {
 };
 
 /* Creating a function that will check if an object has a property. */
-const hasOwnProperty = (({hasOwnProperty}) => (obj, prop) => hasOwnProperty.call(obj, prop))(Object.prototype);
+const _hasOwnProperty = (({hasOwnProperty}) => (obj, prop) => hasOwnProperty.call(obj, prop))(Object.prototype);
+
+const hasOwnProp = _hasOwnProperty;
 
 /**
  * Determine if a value is a RegExp object
@@ -568,9 +550,8 @@ const reduceDescriptors = (obj, reducer) => {
   const reducedDescriptors = {};
 
   forEach(descriptors, (descriptor, name) => {
-    let ret;
-    if ((ret = reducer(descriptor, name, obj)) !== false) {
-      reducedDescriptors[name] = ret || descriptor;
+    if (reducer(descriptor, name, obj) !== false) {
+      reducedDescriptors[name] = descriptor;
     }
   });
 
@@ -629,37 +610,6 @@ const toFiniteNumber = (value, defaultValue) => {
   return Number.isFinite(value) ? value : defaultValue;
 };
 
-const ALPHA = 'abcdefghijklmnopqrstuvwxyz';
-
-const DIGIT = '0123456789';
-
-const ALPHABET = {
-  DIGIT,
-  ALPHA,
-  ALPHA_DIGIT: ALPHA + ALPHA.toUpperCase() + DIGIT
-};
-
-const generateString = (size = 16, alphabet = ALPHABET.ALPHA_DIGIT) => {
-  let str = '';
-  const {length} = alphabet;
-  while (size--) {
-    str += alphabet[Math.random() * length|0];
-  }
-
-  return str;
-};
-
-/**
- * If the thing is a FormData object, return true, otherwise return false.
- *
- * @param {unknown} thing - The thing to check.
- *
- * @returns {boolean}
- */
-function isSpecCompliantForm(thing) {
-  return !!(thing && isFunction(thing.append) && thing[Symbol.toStringTag] === 'FormData' && thing[Symbol.iterator]);
-}
-
 const toJSONObject = (obj) => {
   const stack = new Array(10);
 
@@ -690,11 +640,6 @@ const toJSONObject = (obj) => {
 
   return visit(obj, 0);
 };
-
-const isAsyncFn = kindOfTest('AsyncFunction');
-
-const isThenable = (thing) =>
-  thing && (isObject(thing) || isFunction(thing)) && isFunction(thing.then) && isFunction(thing.catch);
 
 const utils = {
   isArray,
@@ -731,8 +676,8 @@ const utils = {
   forEachEntry,
   matchAll,
   isHTMLForm,
-  hasOwnProperty,
-  hasOwnProp: hasOwnProperty, // an alias to avoid ESLint no-prototype-builtins detection
+  hasOwnProperty: _hasOwnProperty,
+  hasOwnProp: _hasOwnProperty, // an alias to avoid ESLint no-prototype-builtins detection
   reduceDescriptors,
   freezeMethods,
   toObjectSet,
@@ -742,12 +687,7 @@ const utils = {
   findKey,
   global: _global,
   isContextDefined,
-  ALPHABET,
-  generateString,
-  isSpecCompliantForm,
-  toJSONObject,
-  isAsyncFn,
-  isThenable
+  toJSONObject
 };
 
 /**
@@ -901,6 +841,17 @@ const predicates = utils.toFlatObject(utils, {}, null, function filter(prop) {
 });
 
 /**
+ * If the thing is a FormData object, return true, otherwise return false.
+ *
+ * @param {unknown} thing - The thing to check.
+ *
+ * @returns {boolean}
+ */
+function isSpecCompliant(thing) {
+  return thing && utils.isFunction(thing.append) && thing[Symbol.toStringTag] === 'FormData' && thing[Symbol.iterator];
+}
+
+/**
  * Convert a data object to FormData
  *
  * @param {Object} obj
@@ -929,7 +880,7 @@ function toFormData(obj, formData, options) {
   }
 
   // eslint-disable-next-line no-param-reassign
-  formData = formData || new (FormData__default["default"] || FormData)();
+  formData = formData || new (FormData$1 || FormData)();
 
   // eslint-disable-next-line no-param-reassign
   options = utils.toFlatObject(options, {
@@ -947,7 +898,7 @@ function toFormData(obj, formData, options) {
   const dots = options.dots;
   const indexes = options.indexes;
   const _Blob = options.Blob || typeof Blob !== 'undefined' && Blob;
-  const useBlob = _Blob && utils.isSpecCompliantForm(formData);
+  const useBlob = _Blob && isSpecCompliant(formData);
 
   if (!utils.isFunction(visitor)) {
     throw new TypeError('visitor must be a function');
@@ -992,7 +943,7 @@ function toFormData(obj, formData, options) {
         value = JSON.stringify(value);
       } else if (
         (utils.isArray(value) && isFlatArray(value)) ||
-        ((utils.isFileList(value) || utils.endsWith(key, '[]')) && (arr = utils.toArray(value))
+        (utils.isFileList(value) || utils.endsWith(key, '[]') && (arr = utils.toArray(value))
         )) {
         // eslint-disable-next-line no-param-reassign
         key = removeBrackets(key);
@@ -1242,13 +1193,23 @@ const transitionalDefaults = {
   clarifyTimeoutError: false
 };
 
-const URLSearchParams = url__default["default"].URLSearchParams;
+const URLSearchParams = url.URLSearchParams;
+
+const fetcher = fetch;
 
 const platform = {
   isNode: true,
+  knownAdapters: ['http', 'fetch'],
+  defaultFetchOptions: {
+    redirect: 'follow'
+  },
   classes: {
     URLSearchParams,
-    FormData: FormData__default["default"],
+    FormData: FormData$1,
+    Request: fetch.Request,
+    Response: fetch.Response,
+    Headers: fetch.Headers,
+    AbortController: nodeAbortController.AbortController,
     Blob: typeof Blob !== 'undefined' && Blob || null
   },
   protocols: [ 'http', 'https', 'file', 'data' ]
@@ -1354,6 +1315,10 @@ function formDataToJSON(formData) {
   return null;
 }
 
+const DEFAULT_CONTENT_TYPE = {
+  'Content-Type': undefined
+};
+
 /**
  * It takes a string, tries to parse it, and if it fails, it returns the stringified version
  * of the input
@@ -1383,7 +1348,7 @@ const defaults = {
 
   transitional: transitionalDefaults,
 
-  adapter: ['xhr', 'http'],
+  adapter: platform.knownAdapters || ['xhr', 'http', 'fetch'],
 
   transformRequest: [function transformRequest(data, headers) {
     const contentType = headers.getContentType() || '';
@@ -1492,14 +1457,25 @@ const defaults = {
 
   headers: {
     common: {
-      'Accept': 'application/json, text/plain, */*',
-      'Content-Type': undefined
+      'Accept': 'application/json, text/plain, */*'
     }
-  }
+  },
+
+  fetcher: null,
+
+  fetchOptions: platform.defaultFetchOptions || {
+    redirect: 'follow'
+  },
+
+  parsedUrl: null,
 };
 
-utils.forEach(['delete', 'get', 'head', 'post', 'put', 'patch'], (method) => {
+utils.forEach(['delete', 'get', 'head'], function forEachMethodNoData(method) {
   defaults.headers[method] = {};
+});
+
+utils.forEach(['post', 'put', 'patch'], function forEachMethodWithData(method) {
+  defaults.headers[method] = utils.merge(DEFAULT_CONTENT_TYPE);
 });
 
 const defaults$1 = defaults;
@@ -1582,15 +1558,13 @@ function parseTokens(str) {
   return tokens;
 }
 
-const isValidHeaderName = (str) => /^[-_a-zA-Z0-9^`|~,!#$%&'*+.]+$/.test(str.trim());
+function isValidHeaderName(str) {
+  return /^[-_a-zA-Z]+$/.test(str.trim());
+}
 
-function matchHeaderValue(context, value, header, filter, isHeaderNameFilter) {
+function matchHeaderValue(context, value, header, filter) {
   if (utils.isFunction(filter)) {
     return filter.call(this, value, header);
-  }
-
-  if (isHeaderNameFilter) {
-    value = header;
   }
 
   if (!utils.isString(value)) return;
@@ -1696,7 +1670,7 @@ class AxiosHeaders {
     if (header) {
       const key = utils.findKey(this, header);
 
-      return !!(key && this[key] !== undefined && (!matcher || matchHeaderValue(this, this[key], key, matcher)));
+      return !!(key && (!matcher || matchHeaderValue(this, this[key], key, matcher)));
     }
 
     return false;
@@ -1729,20 +1703,8 @@ class AxiosHeaders {
     return deleted;
   }
 
-  clear(matcher) {
-    const keys = Object.keys(this);
-    let i = keys.length;
-    let deleted = false;
-
-    while (i--) {
-      const key = keys[i];
-      if(!matcher || matchHeaderValue(this, this[key], key, matcher, true)) {
-        delete this[key];
-        deleted = true;
-      }
-    }
-
-    return deleted;
+  clear() {
+    return Object.keys(this).forEach(this.delete.bind(this));
   }
 
   normalize(format) {
@@ -1833,19 +1795,9 @@ class AxiosHeaders {
   }
 }
 
-AxiosHeaders.accessor(['Content-Type', 'Content-Length', 'Accept', 'Accept-Encoding', 'User-Agent', 'Authorization']);
+AxiosHeaders.accessor(['Content-Type', 'Content-Length', 'Accept', 'Accept-Encoding', 'User-Agent']);
 
-// reserved names hotfix
-utils.reduceDescriptors(AxiosHeaders.prototype, ({value}, key) => {
-  let mapped = key[0].toUpperCase() + key.slice(1); // map `set` => `Set`
-  return {
-    get: () => value,
-    set(headerValue) {
-      this[mapped] = headerValue;
-    }
-  }
-});
-
+utils.freezeMethods(AxiosHeaders.prototype);
 utils.freezeMethods(AxiosHeaders);
 
 const AxiosHeaders$1 = AxiosHeaders;
@@ -1935,6 +1887,33 @@ function isAbsoluteURL(url) {
 }
 
 /**
+ * Trim `n` slashes from the start or `end` of a `subject` string.
+ *
+ * @param {!string} subject String to trim slashes from.
+ * @param {boolean=} opt_end Whether to trim from the end of the string. If not passed or passed as `false`, the start
+ *   of the string is inspected instead.
+ * @return {!string} String with slashes trimmed from either the start or end of the string.
+ */
+function trimSlashes(subject, opt_end) {
+  const originalLength = subject.length;
+  const getSubjectChar = () => subject.charAt(opt_end === true ? subject.length - 1 : 0);
+  const trimOne = () => subject = opt_end === true ? subject.slice(0, subject.length - 1) : subject.slice(1);
+
+  let char = getSubjectChar();
+  let iterations = 0;
+
+  while (char === '/') {
+    iterations++;
+    trimOne();
+    char = getSubjectChar();
+    if (iterations > originalLength) {
+      break;  // shouldn't infinite loop, but this protection guarantees it won't look past the length of the string
+    }
+  }
+  return subject;
+}
+
+/**
  * Creates a new URL by combining the specified URLs
  *
  * @param {string} baseURL The base URL
@@ -1943,9 +1922,83 @@ function isAbsoluteURL(url) {
  * @returns {string} The combined URL
  */
 function combineURLs(baseURL, relativeURL) {
-  return relativeURL
-    ? baseURL.replace(/\/+$/, '') + '/' + relativeURL.replace(/^\/+/, '')
+  const combined = relativeURL
+    ? (
+        (baseURL.charAt(baseURL.length - 1) === '/' ? trimSlashes(baseURL, true) : baseURL)
+        + '/'
+        + (relativeURL.charAt(0) === '/' ? trimSlashes(relativeURL) : relativeURL)
+      )
     : baseURL;
+
+  // corner case: if one of the original URLs has multiple slashes which do not reside at the end (for the `baseURL`) or
+  // at the start (for the `relativeURL`), we sanitize them here. avoidance of regex is deliberate, in order to avoid
+  // polynomial runtime complexity.
+  //
+  // since the `baseURL` and `relativeURL` are guaranteed not to have such artifacts at the end, or beginning,
+  // respectively (by `trimSlashes`), we only need to do a quick check for the presence of a double-slash. if there is
+  // none present, we can bail and return the combined URL.
+  //
+  // See more: CWE-1333, CWE-400, CWE-730 (https://cwe.mitre.org/index.html)
+  //
+  // since Axios only supports a limited set of protocols on each platform, we can safely predict where the protocol
+  // specifier will be. Then, we can scan the inverse range for any double-slashes. If there is no protocol present (as
+  // is the case for relative URLs), we can simply scan the string.
+  //
+  // the full suite of supported protocol prefixes across all platforms is:
+  // `['http', 'https', 'file', 'blob', 'url', 'data']`
+  //
+  // these are all either three, four, or five characters long (in the lone case of `https`). we use these offsets to
+  // probe for the protocol string, without iterating, and then proceed as above.
+  const protocolMinimumOffset = 3 + 1;  // 3 character minimum + 1 to arrive at `:`
+  const protocolMaximumOffset = 5 + 1;  // 5 character maximum + 1 to arrive at `:`
+  const combinedLength = combined.length;
+  const offset = Math.min(combinedLength, (protocolMaximumOffset + 2));
+  let sub = combined;
+
+  /* eslint-disable */
+  let protocolPosition = -1;
+
+  // if the combined URLs are shorter than the minimum, there is no protocol by definition, and the URLs are both
+  // relative (and both very small). because we want the offset of the protocol separator, we return `-1` to
+  // indicate it was not found, or `1` to continue processing (we don't know where it is yet).
+  if (!(combinedLength < protocolMinimumOffset)) {
+    // now that we know it's at least as long as the minimum, we can safely slice and check for the protocol tail. the
+    // length of the string can still be less than the maximum offset + 2, though, so we take the minimum of that and
+    // the length of the combined string to prevent overflows. at the same time, we assign the smaller search string to
+    // the subject, so that we don't have to slice it again, and OR-it to the next step.
+    protocolPosition = ((sub = sub.slice(0, offset)) || sub).includes('://') ?
+        // we've found the protocol separator; return the start position. since we may have sliced the search space,
+        // there may or may not be an offset to apply. otherwise, we just return -1 to indicate it was not found (i.e.
+        // in the case of a relative base URL. since the `indexOf` returns the start of the string, we add `3` to
+        // include the protocol separator itself.
+        (sub.indexOf('://') + offset + 3) : -1;
+  }
+
+
+  // use the above metric to calculate the minimum search space for double-slashes which need to be sanitized.
+  const doubleSlashSearch = protocolPosition === -1 ? combined : combined.slice(protocolPosition);
+
+  // check for double slashes in the target search space. if found, build the return value character by character,
+  // dropping repeated slashes as we go.
+  if (doubleSlashSearch.includes('//')) {
+    let previous = '';
+    let charIndex = 0;
+    let charsTotal = doubleSlashSearch.length;
+    let sanitized = '';
+
+    while (charIndex < charsTotal) {
+      const char = doubleSlashSearch.charAt(charIndex);
+      if (char === '/' && previous === '/') ; else {
+        sanitized += char;
+      }
+      previous = char;
+      charIndex++;
+    }
+
+    // finally, if we trimmed the protocol from the search space, we need to combine it again before we return.
+    return protocolPosition === -1 ? `${combined.slice(0, protocolPosition)}${sanitized}` : sanitized;
+  }
+  return combined;
 }
 
 /**
@@ -1965,7 +2018,114 @@ function buildFullPath(baseURL, requestedURL) {
   return requestedURL;
 }
 
-const VERSION = "1.5.1";
+var parseUrl = url.parse;
+
+var DEFAULT_PORTS = {
+  ftp: 21,
+  gopher: 70,
+  http: 80,
+  https: 443,
+  ws: 80,
+  wss: 443,
+};
+
+var stringEndsWith = String.prototype.endsWith || function(s) {
+  return s.length <= this.length &&
+    this.indexOf(s, this.length - s.length) !== -1;
+};
+
+/**
+ * @param {string|object} url - The URL, or the result from url.parse.
+ * @return {string} The URL of the proxy that should handle the request to the
+ *  given URL. If no proxy is set, this will be an empty string.
+ */
+function getProxyForUrl(url) {
+  var parsedUrl = typeof url === 'string' ? parseUrl(url) : url || {};
+  var proto = parsedUrl.protocol;
+  var hostname = parsedUrl.host;
+  var port = parsedUrl.port;
+  if (typeof hostname !== 'string' || !hostname || typeof proto !== 'string') {
+    return '';  // Don't proxy URLs without a valid scheme or host.
+  }
+
+  proto = proto.split(':', 1)[0];
+  // Stripping ports in this way instead of using parsedUrl.hostname to make
+  // sure that the brackets around IPv6 addresses are kept.
+  hostname = hostname.replace(/:\d*$/, '');
+  port = parseInt(port) || DEFAULT_PORTS[proto] || 0;
+  if (!shouldProxy(hostname, port)) {
+    return '';  // Don't proxy URLs that match NO_PROXY.
+  }
+
+  var proxy =
+    getEnv('npm_config_' + proto + '_proxy') ||
+    getEnv(proto + '_proxy') ||
+    getEnv('npm_config_proxy') ||
+    getEnv('all_proxy');
+  if (proxy && proxy.indexOf('://') === -1) {
+    // Missing scheme in proxy, default to the requested URL's scheme.
+    proxy = proto + '://' + proxy;
+  }
+  return proxy;
+}
+
+/**
+ * Determines whether a given URL should be proxied.
+ *
+ * @param {string} hostname - The host name of the URL.
+ * @param {number} port - The effective port of the URL.
+ * @returns {boolean} Whether the given URL should be proxied.
+ * @private
+ */
+function shouldProxy(hostname, port) {
+  var NO_PROXY =
+    (getEnv('npm_config_no_proxy') || getEnv('no_proxy')).toLowerCase();
+  if (!NO_PROXY) {
+    return true;  // Always proxy if NO_PROXY is not set.
+  }
+  if (NO_PROXY === '*') {
+    return false;  // Never proxy if wildcard is set.
+  }
+
+  return NO_PROXY.split(/[,\s]/).every(function(proxy) {
+    if (!proxy) {
+      return true;  // Skip zero-length hosts.
+    }
+    var parsedProxy = proxy.match(/^(.+):(\d+)$/);
+    var parsedProxyHostname = parsedProxy ? parsedProxy[1] : proxy;
+    var parsedProxyPort = parsedProxy ? parseInt(parsedProxy[2]) : 0;
+    if (parsedProxyPort && parsedProxyPort !== port) {
+      return true;  // Skip if ports don't match.
+    }
+
+    if (!/^[.*]/.test(parsedProxyHostname)) {
+      // No wildcards, so stop proxying if there is an exact match.
+      return hostname !== parsedProxyHostname;
+    }
+
+    if (parsedProxyHostname.charAt(0) === '*') {
+      // Remove leading wildcard.
+      parsedProxyHostname = parsedProxyHostname.slice(1);
+    }
+    // Stop proxying if the hostname ends with the no_proxy host.
+    return !stringEndsWith.call(hostname, parsedProxyHostname);
+  });
+}
+
+/**
+ * Get the value for an environment variable.
+ *
+ * @param {string} key - The name of the environment variable.
+ * @return {string} The value of the environment variable.
+ * @private
+ */
+function getEnv(key) {
+  return process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || '';
+}
+
+var getProxyForUrl_1 = getProxyForUrl;
+
+const VERSION = "1.2.1-fetch-beta5";
 
 function parseProtocol(url) {
   const match = /^([-+\w]{1,25})(:?\/\/|:)/.exec(url);
@@ -2104,7 +2264,7 @@ function speedometer(samplesCount, min) {
 
 const kInternals = Symbol('internals');
 
-class AxiosTransformStream extends stream__default["default"].Transform{
+class AxiosTransformStream extends stream.Transform{
   constructor(options) {
     options = utils.toFlatObject(options, {
       maxRate: 0,
@@ -2287,182 +2447,19 @@ class AxiosTransformStream extends stream__default["default"].Transform{
 
 const AxiosTransformStream$1 = AxiosTransformStream;
 
-const {asyncIterator} = Symbol;
-
-const readBlob = async function* (blob) {
-  if (blob.stream) {
-    yield* blob.stream();
-  } else if (blob.arrayBuffer) {
-    yield await blob.arrayBuffer();
-  } else if (blob[asyncIterator]) {
-    yield* blob[asyncIterator]();
-  } else {
-    yield blob;
-  }
-};
-
-const readBlob$1 = readBlob;
-
-const BOUNDARY_ALPHABET = utils.ALPHABET.ALPHA_DIGIT + '-_';
-
-const textEncoder = new util.TextEncoder();
-
-const CRLF = '\r\n';
-const CRLF_BYTES = textEncoder.encode(CRLF);
-const CRLF_BYTES_COUNT = 2;
-
-class FormDataPart {
-  constructor(name, value) {
-    const {escapeName} = this.constructor;
-    const isStringValue = utils.isString(value);
-
-    let headers = `Content-Disposition: form-data; name="${escapeName(name)}"${
-      !isStringValue && value.name ? `; filename="${escapeName(value.name)}"` : ''
-    }${CRLF}`;
-
-    if (isStringValue) {
-      value = textEncoder.encode(String(value).replace(/\r?\n|\r\n?/g, CRLF));
-    } else {
-      headers += `Content-Type: ${value.type || "application/octet-stream"}${CRLF}`;
-    }
-
-    this.headers = textEncoder.encode(headers + CRLF);
-
-    this.contentLength = isStringValue ? value.byteLength : value.size;
-
-    this.size = this.headers.byteLength + this.contentLength + CRLF_BYTES_COUNT;
-
-    this.name = name;
-    this.value = value;
-  }
-
-  async *encode(){
-    yield this.headers;
-
-    const {value} = this;
-
-    if(utils.isTypedArray(value)) {
-      yield value;
-    } else {
-      yield* readBlob$1(value);
-    }
-
-    yield CRLF_BYTES;
-  }
-
-  static escapeName(name) {
-      return String(name).replace(/[\r\n"]/g, (match) => ({
-        '\r' : '%0D',
-        '\n' : '%0A',
-        '"' : '%22',
-      }[match]));
-  }
-}
-
-const formDataToStream = (form, headersHandler, options) => {
-  const {
-    tag = 'form-data-boundary',
-    size = 25,
-    boundary = tag + '-' + utils.generateString(size, BOUNDARY_ALPHABET)
-  } = options || {};
-
-  if(!utils.isFormData(form)) {
-    throw TypeError('FormData instance required');
-  }
-
-  if (boundary.length < 1 || boundary.length > 70) {
-    throw Error('boundary must be 10-70 characters long')
-  }
-
-  const boundaryBytes = textEncoder.encode('--' + boundary + CRLF);
-  const footerBytes = textEncoder.encode('--' + boundary + '--' + CRLF + CRLF);
-  let contentLength = footerBytes.byteLength;
-
-  const parts = Array.from(form.entries()).map(([name, value]) => {
-    const part = new FormDataPart(name, value);
-    contentLength += part.size;
-    return part;
-  });
-
-  contentLength += boundaryBytes.byteLength * parts.length;
-
-  contentLength = utils.toFiniteNumber(contentLength);
-
-  const computedHeaders = {
-    'Content-Type': `multipart/form-data; boundary=${boundary}`
-  };
-
-  if (Number.isFinite(contentLength)) {
-    computedHeaders['Content-Length'] = contentLength;
-  }
-
-  headersHandler && headersHandler(computedHeaders);
-
-  return stream.Readable.from((async function *() {
-    for(const part of parts) {
-      yield boundaryBytes;
-      yield* part.encode();
-    }
-
-    yield footerBytes;
-  })());
-};
-
-const formDataToStream$1 = formDataToStream;
-
-class ZlibHeaderTransformStream extends stream__default["default"].Transform {
-  __transform(chunk, encoding, callback) {
-    this.push(chunk);
-    callback();
-  }
-
-  _transform(chunk, encoding, callback) {
-    if (chunk.length !== 0) {
-      this._transform = this.__transform;
-
-      // Add Default Compression headers if no zlib headers are present
-      if (chunk[0] !== 120) { // Hex: 78
-        const header = Buffer.alloc(2);
-        header[0] = 120; // Hex: 78
-        header[1] = 156; // Hex: 9C 
-        this.push(header, encoding);
-      }
-    }
-
-    this.__transform(chunk, encoding, callback);
-  }
-}
-
-const ZlibHeaderTransformStream$1 = ZlibHeaderTransformStream;
-
-const callbackify = (fn, reducer) => {
-  return utils.isAsyncFn(fn) ? function (...args) {
-    const cb = args.pop();
-    fn.apply(this, args).then((value) => {
-      try {
-        reducer ? cb(null, ...reducer(value)) : cb(null, value);
-      } catch (err) {
-        cb(err);
-      }
-    }, cb);
-  } : fn;
-};
-
-const callbackify$1 = callbackify;
-
 const zlibOptions = {
-  flush: zlib__default["default"].constants.Z_SYNC_FLUSH,
-  finishFlush: zlib__default["default"].constants.Z_SYNC_FLUSH
+  flush: zlib.constants.Z_SYNC_FLUSH,
+  finishFlush: zlib.constants.Z_SYNC_FLUSH
 };
 
 const brotliOptions = {
-  flush: zlib__default["default"].constants.BROTLI_OPERATION_FLUSH,
-  finishFlush: zlib__default["default"].constants.BROTLI_OPERATION_FLUSH
+  flush: zlib.constants.BROTLI_OPERATION_FLUSH,
+  finishFlush: zlib.constants.BROTLI_OPERATION_FLUSH
 };
 
-const isBrotliSupported = utils.isFunction(zlib__default["default"].createBrotliDecompress);
+const isBrotliSupported = utils.isFunction(zlib.createBrotliDecompress);
 
-const {http: httpFollow, https: httpsFollow} = followRedirects__default["default"];
+const {http: httpFollow, https: httpsFollow} = followRedirects;
 
 const isHttps = /https:?/;
 
@@ -2499,7 +2496,7 @@ function dispatchBeforeRedirect(options) {
 function setProxy(options, configProxy, location) {
   let proxy = configProxy;
   if (!proxy && proxy !== false) {
-    const proxyUrl = proxyFromEnv.getProxyForUrl(location);
+    const proxyUrl = getProxyForUrl_1(location);
     if (proxyUrl) {
       proxy = new URL(proxyUrl);
     }
@@ -2542,58 +2539,25 @@ function setProxy(options, configProxy, location) {
 
 const isHttpAdapterSupported = typeof process !== 'undefined' && utils.kindOf(process) === 'process';
 
-// temporary hotfix
-
-const wrapAsync = (asyncExecutor) => {
-  return new Promise((resolve, reject) => {
-    let onDone;
-    let isDone;
-
-    const done = (value, isRejected) => {
-      if (isDone) return;
-      isDone = true;
-      onDone && onDone(value, isRejected);
-    };
-
-    const _resolve = (value) => {
-      done(value);
-      resolve(value);
-    };
-
-    const _reject = (reason) => {
-      done(reason, true);
-      reject(reason);
-    };
-
-    asyncExecutor(_resolve, _reject, (onDoneHandler) => (onDone = onDoneHandler)).catch(_reject);
-  })
-};
-
 /*eslint consistent-return:0*/
 const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
-  return wrapAsync(async function dispatchHttpRequest(resolve, reject, onDone) {
-    let {data, lookup, family} = config;
-    const {responseType, responseEncoding} = config;
+  return new Promise(function dispatchHttpRequest(resolvePromise, rejectPromise) {
+    let data = config.data;
+    const responseType = config.responseType;
+    const responseEncoding = config.responseEncoding;
     const method = config.method.toUpperCase();
+    let isFinished;
     let isDone;
     let rejected = false;
     let req;
 
-    if (lookup && utils.isAsyncFn(lookup)) {
-      lookup = callbackify$1(lookup, (entry) => {
-        if(utils.isString(entry)) {
-          entry = [entry, entry.indexOf('.') < 0 ? 6 : 4];
-        } else if (!utils.isArray(entry)) {
-          throw new TypeError('lookup async function must return an array [ip: string, family: number]]')
-        }
-        return entry;
-      });
-    }
-
     // temporary internal emitter until the AxiosRequest class will be implemented
-    const emitter = new EventEmitter__default["default"]();
+    const emitter = new EventEmitter();
 
-    const onFinished = () => {
+    function onFinished() {
+      if (isFinished) return;
+      isFinished = true;
+
       if (config.cancelToken) {
         config.cancelToken.unsubscribe(abort);
       }
@@ -2603,15 +2567,28 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
       }
 
       emitter.removeAllListeners();
-    };
+    }
 
-    onDone((value, isRejected) => {
+    function done(value, isRejected) {
+      if (isDone) return;
+
       isDone = true;
+
       if (isRejected) {
         rejected = true;
         onFinished();
       }
-    });
+
+      isRejected ? rejectPromise(value) : resolvePromise(value);
+    }
+
+    const resolve = function resolve(value) {
+      done(value);
+    };
+
+    const reject = function reject(value) {
+      done(value, true);
+    };
 
     function abort(reason) {
       emitter.emit('abort', !reason || reason.type ? new CanceledError(null, config, req) : reason);
@@ -2628,7 +2605,7 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
 
     // Parse url
     const fullPath = buildFullPath(config.baseURL, config.url);
-    const parsed = new URL(fullPath, 'http://localhost');
+    const parsed = new URL(fullPath);
     const protocol = parsed.protocol || supportedProtocols[0];
 
     if (protocol === 'data:') {
@@ -2655,10 +2632,10 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
         convertedData = convertedData.toString(responseEncoding);
 
         if (!responseEncoding || responseEncoding === 'utf8') {
-          convertedData = utils.stripBOM(convertedData);
+          data = utils.stripBOM(convertedData);
         }
       } else if (responseType === 'stream') {
-        convertedData = stream__default["default"].Readable.from(convertedData);
+        convertedData = stream.Readable.from(convertedData);
       }
 
       return settle(resolve, reject, {
@@ -2692,32 +2669,9 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
     let maxUploadRate = undefined;
     let maxDownloadRate = undefined;
 
-    // support for spec compliant FormData objects
-    if (utils.isSpecCompliantForm(data)) {
-      const userBoundary = headers.getContentType(/boundary=([-_\w\d]{10,70})/i);
-
-      data = formDataToStream$1(data, (formHeaders) => {
-        headers.set(formHeaders);
-      }, {
-        tag: `axios-${VERSION}-boundary`,
-        boundary: userBoundary && userBoundary[1] || undefined
-      });
-      // support for https://www.npmjs.com/package/form-data api
-    } else if (utils.isFormData(data) && utils.isFunction(data.getHeaders)) {
+    // support for https://www.npmjs.com/package/form-data api
+    if (utils.isFormData(data) && utils.isFunction(data.getHeaders)) {
       headers.set(data.getHeaders());
-
-      if (!headers.hasContentLength()) {
-        try {
-          const knownLength = await util__default["default"].promisify(data.getLength).call(data);
-          Number.isFinite(knownLength) && knownLength >= 0 && headers.setContentLength(knownLength);
-          /*eslint no-empty:0*/
-        } catch (e) {
-        }
-      }
-    } else if (utils.isBlob(data)) {
-      data.size && headers.setContentType(data.type || 'application/octet-stream');
-      headers.setContentLength(data.size || 0);
-      data = stream__default["default"].Readable.from(readBlob$1(data));
     } else if (data && !utils.isStream(data)) {
       if (Buffer.isBuffer(data)) ; else if (utils.isArrayBuffer(data)) {
         data = Buffer.from(new Uint8Array(data));
@@ -2732,7 +2686,7 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
       }
 
       // Add Content-Length header if data exists
-      headers.setContentLength(data.length, false);
+      headers.set('Content-Length', data.length, false);
 
       if (config.maxBodyLength > -1 && data.length > config.maxBodyLength) {
         return reject(new AxiosError(
@@ -2754,10 +2708,10 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
 
     if (data && (onUploadProgress || maxUploadRate)) {
       if (!utils.isStream(data)) {
-        data = stream__default["default"].Readable.from(data, {objectMode: false});
+        data = stream.Readable.from(data, {objectMode: false});
       }
 
-      data = stream__default["default"].pipeline([data, new AxiosTransformStream$1({
+      data = stream.pipeline([data, new AxiosTransformStream$1({
         length: contentLength,
         maxRate: utils.toFiniteNumber(maxUploadRate)
       })], utils.noop);
@@ -2813,13 +2767,9 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
       agents: { http: config.httpAgent, https: config.httpsAgent },
       auth,
       protocol,
-      family,
       beforeRedirect: dispatchBeforeRedirect,
       beforeRedirects: {}
     };
-
-    // cacheable-lookup integration hotfix
-    !utils.isUndefined(lookup) && (options.lookup = lookup);
 
     if (config.socketPath) {
       options.socketPath = config.socketPath;
@@ -2835,7 +2785,7 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
     if (config.transport) {
       transport = config.transport;
     } else if (config.maxRedirects === 0) {
-      transport = isHttpsRequest ? https__default["default"] : http__default["default"];
+      transport = isHttpsRequest ? https : http;
     } else {
       if (config.maxRedirects) {
         options.maxRedirects = config.maxRedirects;
@@ -2894,38 +2844,30 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
           delete res.headers['content-encoding'];
         }
 
-        switch ((res.headers['content-encoding'] || '').toLowerCase()) {
+        switch (res.headers['content-encoding']) {
         /*eslint default-case:0*/
         case 'gzip':
         case 'x-gzip':
         case 'compress':
         case 'x-compress':
-          // add the unzipper to the body stream processing pipeline
-          streams.push(zlib__default["default"].createUnzip(zlibOptions));
-
-          // remove the content-encoding in order to not confuse downstream operations
-          delete res.headers['content-encoding'];
-          break;
         case 'deflate':
-          streams.push(new ZlibHeaderTransformStream$1());
-
           // add the unzipper to the body stream processing pipeline
-          streams.push(zlib__default["default"].createUnzip(zlibOptions));
+          streams.push(zlib.createUnzip(zlibOptions));
 
           // remove the content-encoding in order to not confuse downstream operations
           delete res.headers['content-encoding'];
           break;
         case 'br':
           if (isBrotliSupported) {
-            streams.push(zlib__default["default"].createBrotliDecompress(brotliOptions));
+            streams.push(zlib.createBrotliDecompress(brotliOptions));
             delete res.headers['content-encoding'];
           }
         }
       }
 
-      responseStream = streams.length > 1 ? stream__default["default"].pipeline(streams, utils.noop) : streams[0];
+      responseStream = streams.length > 1 ? stream.pipeline(streams, utils.noop) : streams[0];
 
-      const offListeners = stream__default["default"].finished(responseStream, () => {
+      const offListeners = stream.finished(responseStream, () => {
         offListeners();
         onFinished();
       });
@@ -3027,7 +2969,7 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
       // This is forcing a int timeout to avoid problems if the `req` interface doesn't handle other types.
       const timeout = parseInt(config.timeout, 10);
 
-      if (Number.isNaN(timeout)) {
+      if (isNaN(timeout)) {
         reject(new AxiosError(
           'error trying to parse `config.timeout` to int',
           AxiosError.ERR_BAD_OPTION_VALUE,
@@ -3088,367 +3030,413 @@ const httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
   });
 };
 
-const cookies = platform.isStandardBrowserEnv ?
+// eslint-disable-next-line strict
+const xhrAdapter = null;
 
-// Standard browser envs support document.cookie
-  (function standardBrowserEnv() {
-    return {
-      write: function write(name, value, expires, path, domain, secure) {
-        const cookie = [];
-        cookie.push(name + '=' + encodeURIComponent(value));
+const defaultFetchResponseType = 'json';
 
-        if (utils.isNumber(expires)) {
-          cookie.push('expires=' + new Date(expires).toGMTString());
-        }
+const plainMime = 'text/plain';
+const contentTypeHeader = 'Content-Type';
+const contentLengthHeader = 'Content-Length';
+const transferEncodingHeader = 'Transfer-Encoding';
 
-        if (utils.isString(path)) {
-          cookie.push('path=' + path);
-        }
+const textLikeContentTypes = new Set([
+    plainMime,
+    'text/html',
+    'text/xml',
+    'text/css',
+    'text/javascript',
+    'application/xml',
+    'application/xhtml+xml',
+    'application/javascript'
+]);
 
-        if (utils.isString(domain)) {
-          cookie.push('domain=' + domain);
-        }
+const knownNoBodyResponseStatuses = new Set([
+    204,
+    205,
+    304
+]);
 
-        if (secure === true) {
-          cookie.push('secure');
-        }
+const debugLog = (msg, ...args) => {
+  {
+    console.log('[axios:fetch] ', msg, ...args);
+  }
+};
 
-        document.cookie = cookie.join('; ');
-      },
-
-      read: function read(name) {
-        const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'));
-        return (match ? decodeURIComponent(match[3]) : null);
-      },
-
-      remove: function remove(name) {
-        this.write(name, '', Date.now() - 86400000);
-      }
-    };
-  })() :
-
-// Non standard browser env (web workers, react-native) lack needed support.
-  (function nonStandardBrowserEnv() {
-    return {
-      write: function write() {},
-      read: function read() { return null; },
-      remove: function remove() {}
-    };
-  })();
-
-const isURLSameOrigin = platform.isStandardBrowserEnv ?
-
-// Standard browser envs have full support of the APIs needed to test
-// whether the request URL is of the same origin as current location.
-  (function standardBrowserEnv() {
-    const msie = /(msie|trident)/i.test(navigator.userAgent);
-    const urlParsingNode = document.createElement('a');
-    let originURL;
-
-    /**
-    * Parse a URL to discover it's components
-    *
-    * @param {String} url The URL to be parsed
-    * @returns {Object}
-    */
-    function resolveURL(url) {
-      let href = url;
-
-      if (msie) {
-        // IE needs attribute set twice to normalize properties
-        urlParsingNode.setAttribute('href', href);
-        href = urlParsingNode.href;
-      }
-
-      urlParsingNode.setAttribute('href', href);
-
-      // urlParsingNode provides the UrlUtils interface - http://url.spec.whatwg.org/#urlutils
-      return {
-        href: urlParsingNode.href,
-        protocol: urlParsingNode.protocol ? urlParsingNode.protocol.replace(/:$/, '') : '',
-        host: urlParsingNode.host,
-        search: urlParsingNode.search ? urlParsingNode.search.replace(/^\?/, '') : '',
-        hash: urlParsingNode.hash ? urlParsingNode.hash.replace(/^#/, '') : '',
-        hostname: urlParsingNode.hostname,
-        port: urlParsingNode.port,
-        pathname: (urlParsingNode.pathname.charAt(0) === '/') ?
-          urlParsingNode.pathname :
-          '/' + urlParsingNode.pathname
-      };
-    }
-
-    originURL = resolveURL(window.location.href);
-
-    /**
-    * Determine if a URL shares the same origin as the current location
-    *
-    * @param {String} requestURL The URL to test
-    * @returns {boolean} True if URL shares the same origin, otherwise false
-    */
-    return function isURLSameOrigin(requestURL) {
-      const parsed = (utils.isString(requestURL)) ? resolveURL(requestURL) : requestURL;
-      return (parsed.protocol === originURL.protocol &&
-          parsed.host === originURL.host);
-    };
-  })() :
-
-  // Non standard browser envs (web workers, react-native) lack needed support.
-  (function nonStandardBrowserEnv() {
-    return function isURLSameOrigin() {
-      return true;
-    };
-  })();
-
-function progressEventReducer(listener, isDownloadStream) {
-  let bytesNotified = 0;
-  const _speedometer = speedometer(50, 250);
-
-  return e => {
-    const loaded = e.loaded;
-    const total = e.lengthComputable ? e.total : undefined;
-    const progressBytes = loaded - bytesNotified;
-    const rate = _speedometer(progressBytes);
-    const inRange = loaded <= total;
-
-    bytesNotified = loaded;
-
-    const data = {
-      loaded,
-      total,
-      progress: total ? (loaded / total) : undefined,
-      bytes: progressBytes,
-      rate: rate ? rate : undefined,
-      estimated: rate && total && inRange ? (total - loaded) / rate : undefined,
-      event: e
-    };
-
-    data[isDownloadStream ? 'download' : 'upload'] = true;
-
-    listener(data);
-  };
-}
-
-const isXHRAdapterSupported = typeof XMLHttpRequest !== 'undefined';
-
-const xhrAdapter = isXHRAdapterSupported && function (config) {
-  return new Promise(function dispatchXhrRequest(resolve, reject) {
-    let requestData = config.data;
-    const requestHeaders = AxiosHeaders$1.from(config.headers).normalize();
-    const responseType = config.responseType;
-    let onCanceled;
-    function done() {
-      if (config.cancelToken) {
-        config.cancelToken.unsubscribe(onCanceled);
-      }
-
-      if (config.signal) {
-        config.signal.removeEventListener('abort', onCanceled);
-      }
-    }
-
-    let contentType;
-
-    if (utils.isFormData(requestData)) {
-      if (platform.isStandardBrowserEnv || platform.isStandardBrowserWebWorkerEnv) {
-        requestHeaders.setContentType(false); // Let the browser set it
-      } else if(!requestHeaders.getContentType(/^\s*multipart\/form-data/)){
-        requestHeaders.setContentType('multipart/form-data'); // mobile/desktop app frameworks
-      } else if(utils.isString(contentType = requestHeaders.getContentType())){
-        // fix semicolon duplication issue for ReactNative FormData implementation
-        requestHeaders.setContentType(contentType.replace(/^\s*(multipart\/form-data);+/, '$1'));
-      }
-    }
-
-    let request = new XMLHttpRequest();
-
-    // HTTP basic authentication
-    if (config.auth) {
-      const username = config.auth.username || '';
-      const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : '';
-      requestHeaders.set('Authorization', 'Basic ' + btoa(username + ':' + password));
-    }
-
-    const fullPath = buildFullPath(config.baseURL, config.url);
-
-    request.open(config.method.toUpperCase(), buildURL(fullPath, config.params, config.paramsSerializer), true);
-
-    // Set the request timeout in MS
-    request.timeout = config.timeout;
-
-    function onloadend() {
-      if (!request) {
-        return;
-      }
-      // Prepare the response
-      const responseHeaders = AxiosHeaders$1.from(
-        'getAllResponseHeaders' in request && request.getAllResponseHeaders()
-      );
-      const responseData = !responseType || responseType === 'text' || responseType === 'json' ?
-        request.responseText : request.response;
-      const response = {
-        data: responseData,
-        status: request.status,
-        statusText: request.statusText,
-        headers: responseHeaders,
-        config,
-        request
-      };
-
-      settle(function _resolve(value) {
-        resolve(value);
-        done();
-      }, function _reject(err) {
-        reject(err);
-        done();
-      }, response);
-
-      // Clean up request
-      request = null;
-    }
-
-    if ('onloadend' in request) {
-      // Use onloadend if available
-      request.onloadend = onloadend;
-    } else {
-      // Listen for ready state to emulate onloadend
-      request.onreadystatechange = function handleLoad() {
-        if (!request || request.readyState !== 4) {
-          return;
-        }
-
-        // The request errored out and we didn't get a response, this will be
-        // handled by onerror instead
-        // With one exception: request that using file: protocol, most browsers
-        // will return status as 0 even though it's a successful request
-        if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
-          return;
-        }
-        // readystate handler is calling before onerror or ontimeout handlers,
-        // so we should call onloadend on the next 'tick'
-        setTimeout(onloadend);
-      };
-    }
-
-    // Handle browser request cancellation (as opposed to a manual cancellation)
-    request.onabort = function handleAbort() {
-      if (!request) {
-        return;
-      }
-
-      reject(new AxiosError('Request aborted', AxiosError.ECONNABORTED, config, request));
-
-      // Clean up request
-      request = null;
-    };
-
-    // Handle low level network errors
-    request.onerror = function handleError() {
-      // Real errors are hidden from us by the browser
-      // onerror should only fire if it's a network error
-      reject(new AxiosError('Network Error', AxiosError.ERR_NETWORK, config, request));
-
-      // Clean up request
-      request = null;
-    };
-
-    // Handle timeout
-    request.ontimeout = function handleTimeout() {
-      let timeoutErrorMessage = config.timeout ? 'timeout of ' + config.timeout + 'ms exceeded' : 'timeout exceeded';
-      const transitional = config.transitional || transitionalDefaults;
-      if (config.timeoutErrorMessage) {
-        timeoutErrorMessage = config.timeoutErrorMessage;
-      }
-      reject(new AxiosError(
-        timeoutErrorMessage,
-        transitional.clarifyTimeoutError ? AxiosError.ETIMEDOUT : AxiosError.ECONNABORTED,
-        config,
-        request));
-
-      // Clean up request
-      request = null;
-    };
-
-    // Add xsrf header
-    // This is only done if running in a standard browser environment.
-    // Specifically not if we're in a web worker, or react-native.
-    if (platform.isStandardBrowserEnv) {
-      // Add xsrf header
-      const xsrfValue = (config.withCredentials || isURLSameOrigin(fullPath))
-        && config.xsrfCookieName && cookies.read(config.xsrfCookieName);
-
-      if (xsrfValue) {
-        requestHeaders.set(config.xsrfHeaderName, xsrfValue);
-      }
-    }
-
-    // Remove Content-Type if data is undefined
-    requestData === undefined && requestHeaders.setContentType(null);
-
-    // Add headers to the request
-    if ('setRequestHeader' in request) {
-      utils.forEach(requestHeaders.toJSON(), function setRequestHeader(val, key) {
-        request.setRequestHeader(key, val);
+const fetchAssert = (definition) => {
+    {
+      definition((condition, message) => {
+        console.assert(condition, message);
       });
     }
+};
 
-    // Add withCredentials to request if needed
-    if (!utils.isUndefined(config.withCredentials)) {
-      request.withCredentials = !!config.withCredentials;
+function patchDecodeJson(response) {
+  response.json = async () => {
+    return JSON.parse((await response.text()).trim());
+  };
+  return response;
+}
+
+const handlerFactory = (response) => {
+  return {
+    'text': response.text,
+    'form': response.formData,
+    'blob': response.blob,
+    'json': function jsonShim() {
+      return patchDecodeJson(response).json();
+    }
+  }
+};
+
+const selectHandlerFromConfig = (config, handlers) => {
+  const handler = handlers[config.responseType] || null;
+  debugLog('handler from: config', config.responseType, handler);
+  return handler;
+};
+
+const selectHandlerFromContentType = (config, handlers, contentType) => {
+  const resolvedContentType = (
+      // if it's a text-like content type, resolve it as text/plain
+      textLikeContentTypes.has(contentType) ? plainMime : contentType
+  );
+  const handler = {
+    'application/json': handlers['json'],
+    'text/plain': handlers['text'],
+  }[resolvedContentType] || null;
+
+  debugLog('handler from: content-type', config.responseType, handler);
+  return handler;
+};
+
+function isResponseEligibleForBody(response) {
+  // status cannot be present in `knownNoBodyResponseStatuses` in order to have a parse-able body. additionally, the
+  // response shouldn't be an opaque redirect; those should be handed directly back to the developer.
+  return !knownNoBodyResponseStatuses.has(
+      response.status
+  );
+}
+
+function processResponseBody(config, response, responseHeaders) {
+  let hasBody = false;
+  let handler = null;
+  const handlers = handlerFactory(response);
+
+  // case: non-chunked body with `content-length` header, and...
+  // case: chunked body with a `transfer-encoding` header
+  const hasContentType = responseHeaders.has(contentTypeHeader);
+  if ((responseHeaders.has(contentLengthHeader) || responseHeaders.has(transferEncodingHeader))) {
+    const hasKnownLength = responseHeaders.has(contentLengthHeader);
+    const contentType = responseHeaders.get(contentTypeHeader);
+
+    if (hasKnownLength) {
+      debugLog('body has known length', responseHeaders.get(contentLengthHeader));
+
+      // the response has a content-length, and therefore a known response size.
+      hasBody = +(responseHeaders.get(contentLengthHeader) || 0) > 0;
+    } else {
+      debugLog('body is chunked');
+
+      // the response has a transfer-encoding header indicating a chunked (streamed) response.
+      hasBody = true;
     }
 
-    // Add responseType to request if needed
-    if (responseType && responseType !== 'json') {
-      request.responseType = config.responseType;
-    }
+    if (hasBody) {
+      // if we have detected a body, select a handler to consume the body based on config, or fall-back to the
+      // content-type to resolve a value. if all else fails, the data is considered raw data and made available via a
+      // raw `Blob`.
+      handler = config.responseType ? selectHandlerFromConfig(config, handlers) : null;
+      if (config.responseType) {
+        debugLog('resolved handler from config: ', handler);
+      }
 
-    // Handle progress if needed
-    if (typeof config.onDownloadProgress === 'function') {
-      request.addEventListener('progress', progressEventReducer(config.onDownloadProgress, true));
-    }
+      if (hasContentType && handler == null) {
+        // trim any charset specified
+        const cleanedContentType = contentType.includes(';') ? contentType.split(';')[0] : contentType;
+        handler = selectHandlerFromContentType(config, handlers, cleanedContentType);
+        debugLog('resolved handler from content-type: ', handler);
+      }
+      if (handler == null) {
+        debugLog('no handler found: falling back to `blob`');
 
-    // Not all browsers support upload events
-    if (typeof config.onUploadProgress === 'function' && request.upload) {
-      request.upload.addEventListener('progress', progressEventReducer(config.onUploadProgress));
-    }
-
-    if (config.cancelToken || config.signal) {
-      // Handle cancellation
-      // eslint-disable-next-line func-names
-      onCanceled = cancel => {
-        if (!request) {
-          return;
-        }
-        reject(!cancel || cancel.type ? new CanceledError(null, config, request) : cancel);
-        request.abort();
-        request = null;
-      };
-
-      config.cancelToken && config.cancelToken.subscribe(onCanceled);
-      if (config.signal) {
-        config.signal.aborted ? onCanceled() : config.signal.addEventListener('abort', onCanceled);
+        // if we get this far, it means there wasn't a handler specified via configuration, and we couldn't easily
+        // resolve a handler for a text-type via the content-type. we'll have to fall back to a `Blob`.
+        handler = handlers['blob'] || null;
       }
     }
+  }
+  return [hasBody, handler];
+}
 
-    const protocol = parseProtocol(fullPath);
+function dispatchFetch(config, resolve, reject) {
+  debugLog('invoked');
 
-    if (protocol && platform.protocols.indexOf(protocol) === -1) {
-      reject(new AxiosError('Unsupported protocol ' + protocol + ':', AxiosError.ERR_BAD_REQUEST, config));
+  const abortController = new nodeAbortController.AbortController();
+  const { signal } = abortController;
+  const body = config.data;
+  const method = config.method.toUpperCase();
+  const responseType = config.responseType;
+  const requestHeaders = AxiosHeaders$1.from(config.headers).normalize();
+  let fullPath = buildFullPath(config.baseURL, config.url);
+
+  // safely parse into `URL`, or use existing/cached URL via config. skip this step for relative URLs, which do not
+  // parse into `URL` objects because they do not encapsulate origin info. make sure to let protocol-relative URLs
+  // through, though, which are considered absolute.
+  let parsedUrl = config.parsedUrl;
+  if (!parsedUrl && !(fullPath.startsWith('/') && !fullPath.startsWith('//'))) {
+    try {
+      // we are unable to parse the URL if it (1) is a relative URL, or (2) is a malformed URL to begin with. to avoid
+      // #1 causing an error, we can make an attempt here to use the current window origin as a relative base; this will
+      // only work in browsers, though, so we need to be careful to check that we have an origin in the first place.
+      if (platform.isStandardBrowserEnv) {
+        // origin = `https://domain.com` (protocol + host + port if non-standard)
+        // fullPath = `/foo/bar` (relative path)
+        // `fullPath = https://domain.com/foo/bar`
+        fullPath = window.location.origin + fullPath;
+      }
+      parsedUrl = new URL(fullPath);
+    } catch (urlParseErr) {
+      console.error('[axios:fetch] URL parse error: ', urlParseErr);
+      reject(urlParseErr);
       return;
     }
+  }
 
+  const fetchOptions = config.fetchOptions || {};
 
-    // Send the request
-    request.send(requestData || null);
+  // bail early if protocol is unsupported
+  const protocol = parseProtocol(fullPath);
+  if (protocol && platform.protocols.indexOf(protocol) === -1) {
+    reject(new AxiosError('Unsupported protocol ' + protocol + ':', AxiosError.ERR_BAD_REQUEST, config));
+    return;
+  }
+
+  // if we're posting form data, let the browser control the content type
+  if (isFormData(body) && platform.isStandardBrowserEnv) {
+    requestHeaders.setContentType(false);
+  }
+
+  // HTTP basic authentication
+  if (config.auth) {
+    const username = config.auth.username || '';
+    const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : '';
+    requestHeaders.set('Authorization', 'Basic ' + btoa(username + ':' + password));
+  }
+
+  // honor XHR `withCredentials` as fetch `mode:cors`
+  if (!isUndefined(config.withCredentials)) {
+    fetchOptions.mode = 'cors';
+  }
+
+  let req;
+  let fetchHandle;
+  let onCanceled;
+  if (config.cancelToken || config.signal) {
+    // eslint-disable-next-line func-names
+    onCanceled = cancel => {
+      if (!fetchHandle) {
+        // already canceled
+        return;
+      }
+      reject(!cancel || cancel.type ? new CanceledError(null, config, req) : cancel);
+      abortController.abort();
+      fetchHandle = null;
+    };
+
+    config.cancelToken && config.cancelToken.subscribe(onCanceled);
+    if (config.signal) {
+      config.signal.aborted ? onCanceled() : config.signal.addEventListener('abort', onCanceled);
+    }
+  }
+
+  // prep request headers
+  const serializedHeaders = requestHeaders.toJSON(true);
+  const headers = new fetch.Headers();
+  Object.entries(serializedHeaders).forEach(([key, value]) => {
+    headers.set(key, value);  // already merged
   });
-};
+  debugLog('fetch headers', Object.fromEntries(headers.entries()));
+
+  // body-less requests should not have content-type or content-length headers
+  body === undefined && (
+      headers.delete(contentTypeHeader) ||
+      headers.delete(contentLengthHeader)
+  );
+
+  debugLog(`request: ${method} ${parsedUrl ? parsedUrl.toString() : fullPath} (has body: ${!!body})`);
+  debugLog(`finalized headers`, Object.fromEntries(headers.entries()));
+
+  // prep HTTP request
+  req = new fetch.Request(parsedUrl || fullPath, {
+    method,
+    headers,
+    body,
+  });
+
+  // mount responseType to request if it is not the default
+  if (responseType && responseType !== defaultFetchResponseType) {
+    req.responseType = config.responseType;
+  }
+
+  // @TODO(sgammon): upload/download progress events
+
+  function done() {
+    if (config.cancelToken && onCanceled) {
+      config.cancelToken.unsubscribe(onCanceled);
+    }
+    if (config.signal && onCanceled) {
+      config.signal.removeEventListener('abort', onCanceled);
+    }
+  }
+
+  const cleanup = () => {
+    debugLog('cleanup');
+    fetchHandle = null;
+  };
+
+  const continueChain = (response) => {
+    return settle(function _resolve(value) {
+      resolve(value);
+      done();
+    }, function _reject(err) {
+      reject(err);
+      done();
+    }, response);
+  };
+
+  // success handler: translates a `Response` to an axios response
+  const handleResponse = response => {
+    if (!fetchHandle) {
+      debugLog('fetch cancelled; dropping response');
+      return;  // canceled
+    }
+    debugLog('response status =', response.status, response.statusText);
+
+    // begin preparing the response
+    debugLog('raw headers', Object.fromEntries(response.headers.entries()));
+    const responseHeaders = AxiosHeaders$1.from(
+        Object.fromEntries(response.headers.entries())
+    );
+    debugLog('headers', responseHeaders);
+
+    let hasBody = false;
+    let handler = null;
+    let eligibleForBody = isResponseEligibleForBody(response);
+    debugLog('eligible for body =', eligibleForBody);
+
+    if (eligibleForBody) {
+      [hasBody, handler] = processResponseBody(
+          config,
+          response,
+          responseHeaders,
+      );
+    }
+    debugLog('response has body =', hasBody);
+
+    const synthesizedResponse = {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      request: req,
+      fetchResponse: response,
+      config,
+    };
+
+    if (!handler) {
+      if (hasBody) {
+        console.warn('axios-fetch: response has a body, but no handler could be resolved.');
+      }
+      debugLog('nohandler');
+      continueChain(synthesizedResponse);
+      cleanup();  // done
+    } else {
+      debugLog('handler', config.responseType || defaultFetchResponseType, handler);
+
+      try {
+        // dispatch data handler if found (`text`, `json`, or `blob`)
+        fetchAssert((t) => t(typeof handler === 'function', "handler should be a function if resolved"));
+
+        debugLog('decode');
+        return handler.apply(response).then(data => {
+          debugLog('data');
+
+          // continue processing with merged-in data
+          return continueChain(Object.assign(synthesizedResponse, { data }));
+        }, reject);
+      } catch (err) {
+        console.error('axios-fetch: error while decoding response data', err);
+        debugLog('error', err);
+        reject(err);
+      } finally {
+        cleanup();
+      }
+    }
+  };
+
+  const handleError = err => {
+    debugLog('error', err);
+    reject(err);
+  };
+
+  debugLog('fire');
+
+  // fire the request
+  fetchHandle = (config.fetcher || fetcher)(req, Object.assign({}, fetchOptions, {
+    signal,
+  })).then(handleResponse, handleError);
+
+  return fetchHandle;
+}
+
+function configFromURL(url, config) {
+  config = config || {};
+  if (!isUndefined(url) && (!isUndefined(URL) && url instanceof URL)) {
+    config.url = url.toString();
+  }
+  return config;
+}
+
+function isRequest(thing) {
+  {
+    return thing instanceof fetch.Request;
+  }
+}
+
+function configFromRequest(request, config) {
+  config = config || {};
+  if (!isUndefined(request)) {
+    if (isString(request.url)) {
+      config.url = request.url;
+    }
+    // if (isString(request.method)) {
+    //   config.method = request.method;
+    // }
+    // if (request.headers.length > 0) {
+    //   config.headers = Object.fromEntries(request.headers.entries());
+    // }
+    // TODO(sgammon): full support for entire axios config
+  }
+  return config;
+}
+
+function fetchAdapter(config) {
+  return new Promise(function (accept, reject) {
+    try {
+      return dispatchFetch(config, accept, reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
 
 const knownAdapters = {
   http: httpAdapter,
-  xhr: xhrAdapter
+  xhr: xhrAdapter,
+  fetch: fetchAdapter
 };
 
-utils.forEach(knownAdapters, (fn, value) => {
-  if (fn) {
+forEach(knownAdapters, (fn, value) => {
+  if(fn) {
     try {
       Object.defineProperty(fn, 'name', {value});
     } catch (e) {
@@ -3458,56 +3446,38 @@ utils.forEach(knownAdapters, (fn, value) => {
   }
 });
 
-const renderReason = (reason) => `- ${reason}`;
-
-const isResolvedHandle = (adapter) => utils.isFunction(adapter) || adapter === null || adapter === false;
-
 const adapters = {
   getAdapter: (adapters) => {
-    adapters = utils.isArray(adapters) ? adapters : [adapters];
+    adapters = isArray(adapters) ? adapters : [adapters];
 
     const {length} = adapters;
     let nameOrAdapter;
     let adapter;
 
-    const rejectedReasons = {};
-
     for (let i = 0; i < length; i++) {
       nameOrAdapter = adapters[i];
-      let id;
-
-      adapter = nameOrAdapter;
-
-      if (!isResolvedHandle(nameOrAdapter)) {
-        adapter = knownAdapters[(id = String(nameOrAdapter)).toLowerCase()];
-
-        if (adapter === undefined) {
-          throw new AxiosError(`Unknown adapter '${id}'`);
-        }
-      }
-
-      if (adapter) {
+      if((adapter = isString(nameOrAdapter) ? knownAdapters[nameOrAdapter.toLowerCase()] : nameOrAdapter)) {
         break;
       }
-
-      rejectedReasons[id || '#' + i] = adapter;
     }
 
     if (!adapter) {
-
-      const reasons = Object.entries(rejectedReasons)
-        .map(([id, state]) => `adapter ${id} ` +
-          (state === false ? 'is not supported by the environment' : 'is not available in the build')
+      if (adapter === false) {
+        throw new AxiosError(
+          `Adapter ${nameOrAdapter} is not supported by the environment`,
+          'ERR_NOT_SUPPORT'
         );
+      }
 
-      let s = length ?
-        (reasons.length > 1 ? 'since :\n' + reasons.map(renderReason).join('\n') : ' ' + renderReason(reasons[0])) :
-        'as no adapter specified';
-
-      throw new AxiosError(
-        `There is no suitable adapter to dispatch the request ` + s,
-        'ERR_NOT_SUPPORT'
+      throw new Error(
+        hasOwnProp(knownAdapters, nameOrAdapter) ?
+          `Adapter '${nameOrAdapter}' is not available in the build` :
+          `Unknown adapter '${nameOrAdapter}'`
       );
+    }
+
+    if (!isFunction(adapter)) {
+      throw new TypeError('adapter is not a function');
     }
 
     return adapter;
@@ -3632,6 +3602,36 @@ function mergeConfig(config1, config2) {
   }
 
   // eslint-disable-next-line consistent-return
+  function wrappedStringifiable(getter, types) {
+    return function (a, b) {
+      const value = getter(a, b);
+      if (!utils.isUndefined(value)) {
+        for (const type of types) {
+          if (value instanceof type) {
+            return value.toString();
+          }
+        }
+        return value;
+      }
+    }
+  }
+
+  // eslint-disable-next-line consistent-return
+  function wrappedTypeFactory(getter, types) {
+    return function (a, b) {
+      const value = getter(a, b);
+      if (!utils.isUndefined(value)) {
+        for (const type of types) {
+          if (value instanceof type) {
+            return type(value);
+          }
+        }
+        return value;
+      }
+    }
+  }
+
+  // eslint-disable-next-line consistent-return
   function defaultToConfig2(a, b) {
     if (!utils.isUndefined(b)) {
       return getMergedValue(undefined, b);
@@ -3650,7 +3650,7 @@ function mergeConfig(config1, config2) {
   }
 
   const mergeMap = {
-    url: valueFromConfig2,
+    url: wrappedStringifiable(valueFromConfig2, [URL]),
     method: valueFromConfig2,
     data: valueFromConfig2,
     baseURL: defaultToConfig2,
@@ -3662,6 +3662,8 @@ function mergeConfig(config1, config2) {
     withCredentials: defaultToConfig2,
     adapter: defaultToConfig2,
     responseType: defaultToConfig2,
+    fetcher: defaultToConfig2,
+    fetchOptions: defaultToConfig2,
     xsrfCookieName: defaultToConfig2,
     xsrfHeaderName: defaultToConfig2,
     onUploadProgress: defaultToConfig2,
@@ -3677,10 +3679,11 @@ function mergeConfig(config1, config2) {
     socketPath: defaultToConfig2,
     responseEncoding: defaultToConfig2,
     validateStatus: mergeDirectKeys,
-    headers: (a, b) => mergeDeepProperties(headersToObject(a), headersToObject(b), true)
+    headers: (a, b) => mergeDeepProperties(headersToObject(a), headersToObject(b), true),
+    parsedUrl: wrappedTypeFactory(defaultToConfig2, [URL]),
   };
 
-  utils.forEach(Object.keys(Object.assign({}, config1, config2)), function computeConfigValue(prop) {
+  utils.forEach(Object.keys(config1).concat(Object.keys(config2)), function computeConfigValue(prop) {
     const merge = mergeMap[prop] || mergeDeepProperties;
     const configValue = merge(config1[prop], config2[prop], prop);
     (utils.isUndefined(configValue) && merge !== mergeDirectKeys) || (config[prop] = configValue);
@@ -3808,6 +3811,10 @@ class Axios {
     if (typeof configOrUrl === 'string') {
       config = config || {};
       config.url = configOrUrl;
+    } else if (!utils.isUndefined(URL) && configOrUrl instanceof URL) {
+      config = configFromURL(configOrUrl, config);
+    } else if (isRequest(configOrUrl)) {
+      config = configFromRequest(configOrUrl, config);
     } else {
       config = configOrUrl || {};
     }
@@ -3824,29 +3831,25 @@ class Axios {
       }, false);
     }
 
-    if (paramsSerializer != null) {
-      if (utils.isFunction(paramsSerializer)) {
-        config.paramsSerializer = {
-          serialize: paramsSerializer
-        };
-      } else {
-        validator.assertOptions(paramsSerializer, {
-          encode: validators.function,
-          serialize: validators.function
-        }, true);
-      }
+    if (paramsSerializer !== undefined) {
+      validator.assertOptions(paramsSerializer, {
+        encode: validators.function,
+        serialize: validators.function
+      }, true);
     }
 
     // Set config.method
     config.method = (config.method || this.defaults.method || 'get').toLowerCase();
 
+    let contextHeaders;
+
     // Flatten headers
-    let contextHeaders = headers && utils.merge(
+    contextHeaders = headers && utils.merge(
       headers.common,
       headers[config.method]
     );
 
-    headers && utils.forEach(
+    contextHeaders && utils.forEach(
       ['delete', 'get', 'head', 'post', 'put', 'patch', 'common'],
       (method) => {
         delete headers[method];
@@ -4213,8 +4216,17 @@ function createInstance(defaultConfig) {
   utils.extend(instance, context, null, {allOwnKeys: true});
 
   // Factory for creating new instances
-  instance.create = function create(instanceConfig) {
-    return createInstance(mergeConfig(defaultConfig, instanceConfig));
+  instance.create = function create(instanceConfigOrUrlOrRequest, instanceConfig) {
+    instanceConfig = instanceConfig || instanceConfigOrUrlOrRequest || {};
+
+    // handles the case of a raw `URL` or `Request` object being passed into the `axios` constructor. we translate it to
+    // an axios configuration, preserving any additional config properties passed in the second parameter (optional).
+    if (instanceConfigOrUrlOrRequest instanceof URL) {
+      instanceConfig = configFromURL(instanceConfigOrUrlOrRequest, instanceConfig);
+    } else if (isRequest(instanceConfigOrUrlOrRequest)) {
+      instanceConfig = configFromRequest(instanceConfigOrUrlOrRequest, instanceConfig);
+    }
+    return createInstance(mergeConfig(defaultConfig, instanceConfig || instanceConfigOrUrlOrRequest));
   };
 
   return instance;
@@ -4256,9 +4268,9 @@ axios.AxiosHeaders = AxiosHeaders$1;
 
 axios.formToJSON = thing => formDataToJSON(utils.isHTMLForm(thing) ? new FormData(thing) : thing);
 
-axios.getAdapter = adapters.getAdapter;
-
 axios.HttpStatusCode = HttpStatusCode$1;
+
+axios.FetchAdapter = fetchAdapter;
 
 axios.default = axios;
 
