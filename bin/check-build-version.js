@@ -1,7 +1,7 @@
 import fs from 'fs';
 import assert from 'assert';
 import axios from '../index.js';
-import axiosBuild from '../dist/node/axios.cjs';
+import axiosBuild from '../dist.old/node/axios.cjs';
 
 const {version} = JSON.parse(fs.readFileSync('./package.json'));
 

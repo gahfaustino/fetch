@@ -1,6 +1,6 @@
 {
-  "name": "axios-fetch",
-  "version": "1.2.1-fetch-beta5",
+  "name": "lunare-http",
+  "version": "0.0.1",
   "description": "Promise based HTTP client for the browser and node.js",
   "main": "index.js",
   "type": "module",
@@ -322,5 +322,8 @@
     "extends": [
       "@commitlint/config-conventional"
     ]
+  },
+  "publishConfig": {
+    "@lunare:registry": "https://npm.pkg.github.com"
   }
 }
